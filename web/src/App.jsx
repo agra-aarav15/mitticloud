@@ -51,7 +51,7 @@ export default function App() {
               <div className="tagline">Your drawer-phone is a cloud now.</div>
             </div>
           </div>
-          <span className="chip chip-grad">v0.3.0</span>
+          <span className="chip chip-grad">v0.4.0</span>
         </header>
 
         <nav className="tabbar glass" role="tablist" aria-label="Sections">
