@@ -1,0 +1,9 @@
+node_modules/
+vault/
+data/
+*.log
+.DS_Store
+.env
+
+web/node_modules/
+web/dist/

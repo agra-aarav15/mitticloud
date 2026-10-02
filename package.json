@@ -1,0 +1,26 @@
+{
+  "name": "mitticloud",
+  "version": "0.3.0",
+  "description": "Your drawer-phone is a cloud now. Free personal cloud (photo vault, file server, status dashboard) for an old Android phone running Termux.",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "keywords": [
+    "termux",
+    "personal-cloud",
+    "photo-vault",
+    "file-server",
+    "self-hosted",
+    "android"
+  ],
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.0.2"
+  }
+}

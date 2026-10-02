@@ -1,0 +1,229 @@
+/* StatusPanel — panel-specific styles. Shared tokens/classes live in tokens.css. */
+
+.st-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.st-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+}
+.st-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.st-subtitle {
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+
+.st-offline {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  border-radius: 11px;
+  font-size: 12.5px;
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.22);
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.st-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.st-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.st-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
+}
+.st-overline {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.st-big {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* Battery ring gauge */
+.st-batt {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.st-ring {
+  width: 118px;
+  height: 118px;
+  flex: none;
+}
+.st-ring-track {
+  fill: none;
+  stroke: rgba(148, 183, 255, 0.12);
+  stroke-width: 9;
+}
+.st-ring-fill {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.st-ring-fill.is-low {
+  stroke: var(--danger);
+}
+.st-ring-num {
+  fill: var(--text);
+  font-family: var(--font);
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.st-ring-pct {
+  fill: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.st-batt-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.st-batt-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.st-batt-state.is-charging {
+  color: #7dd3fc;
+}
+.st-batt-state.is-onbatt {
+  color: var(--muted);
+}
+.st-batt-temp {
+  font-size: 12.5px;
+}
+
+/* Storage bar */
+.st-storage-num {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.st-storage-cap {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+.st-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 183, 255, 0.12);
+  overflow: hidden;
+}
+.st-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--grad);
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.st-storage-label {
+  font-size: 12.5px;
+}
+
+/* Key-value rows (device card) */
+.st-kvs {
+  display: flex;
+  flex-direction: column;
+}
+.st-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  padding: 8px 0;
+}
+.st-kv + .st-kv {
+  border-top: 1px solid var(--line);
+}
+
+.st-hint {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.st-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+/* Retry button inside the offline empty state */
+.st-retry {
+  margin-top: 14px;
+}
+
+/* Skeletons */
+.st-sk-title {
+  height: 16px;
+  width: 150px;
+}
+.st-sk-sub {
+  height: 11px;
+  width: 210px;
+  margin-top: 8px;
+}
+.st-sk-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+}
+.st-sk-line {
+  height: 12px;
+}
+.st-sk-big {
+  height: 24px;
+}
+.st-sk-circle {
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+}
+
+@media (max-width: 700px) {
+  .st-grid {
+    grid-template-columns: 1fr;
+  }
+}
