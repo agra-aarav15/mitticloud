@@ -41,8 +41,8 @@ function RingGauge({ level, low, label }) {
     <svg className="st-ring" viewBox="0 0 120 120" role="img" aria-label={label}>
       <defs>
         <linearGradient id="st-ring-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#3b82f6" />
-          <stop offset="1" stopColor="#22d3ee" />
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#a3a3a3" />
         </linearGradient>
       </defs>
       <circle className="st-ring-track" cx="60" cy="60" r={r} />

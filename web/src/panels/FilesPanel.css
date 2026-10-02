@@ -42,7 +42,7 @@
 .fl-mkinput:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 1px;
-  border-color: rgba(59, 130, 246, 0.5);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 /* Breadcrumb path bar */
@@ -145,7 +145,7 @@
   text-overflow: ellipsis;
 }
 .fl-ic-dir {
-  color: #93c5fd;
+  color: #d4d4d4;
   flex: none;
 }
 .fl-ic-file {

@@ -56,7 +56,7 @@
 }
 .ph-tile:hover {
   transform: translateY(-2px);
-  border-color: rgba(59, 130, 246, 0.35);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .ph-media {
@@ -84,7 +84,7 @@
   opacity: 0;
   transform: translateY(-2px);
   transition: opacity 0.18s, transform 0.18s;
-  background: rgba(4, 6, 12, 0.65);
+  background: rgba(10, 10, 10, 0.65);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }

@@ -43,7 +43,7 @@
 .gd-track {
   height: 6px;
   border-radius: 999px;
-  background: rgba(148, 183, 255, 0.12);
+  background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
 }
 .gd-fill {
@@ -183,7 +183,7 @@
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .gd-donelabel:hover .gd-box {
-  border-color: rgba(59, 130, 246, 0.4);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 .gd-donelabel input:focus-visible + .gd-box {
   outline: 2px solid var(--blue);

@@ -30,9 +30,9 @@
   padding: 9px 13px;
   border-radius: 11px;
   font-size: 12.5px;
-  color: #fca5a5;
-  border: 1px solid rgba(248, 113, 113, 0.22);
-  background: rgba(248, 113, 113, 0.05);
+  color: #d4d4d4;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .st-grid {
@@ -86,7 +86,7 @@
 }
 .st-ring-track {
   fill: none;
-  stroke: rgba(148, 183, 255, 0.12);
+  stroke: rgba(255, 255, 255, 0.12);
   stroke-width: 9;
 }
 .st-ring-fill {
@@ -124,7 +124,7 @@
   font-weight: 600;
 }
 .st-batt-state.is-charging {
-  color: #7dd3fc;
+  color: #d4d4d4;
 }
 .st-batt-state.is-onbatt {
   color: var(--muted);
@@ -149,7 +149,7 @@
 .st-bar {
   height: 8px;
   border-radius: 999px;
-  background: rgba(148, 183, 255, 0.12);
+  background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
 }
 .st-bar-fill {
