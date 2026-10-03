@@ -4,6 +4,8 @@
 // through the API and served read-only at /s/<name>/... (index.html as the
 // default document). A tiny registry at data/sites.json tracks names and
 // creation dates; sizes are computed on demand by walking each site folder.
+// A whole site can also be replaced in one call by uploading a ZIP to
+// POST /api/sites/:name/zip (entry paths sanitized, archive capped at 25 MB).
 //
 // SECURITY: /s/<name> serves owner-uploaded files to anyone who can reach the
 // device — the same trust level as /photos. Every user-supplied path is
@@ -17,10 +19,12 @@
 // route needs a ~34 MB body limit (25 MB decoded) while the global parser is
 // capped at 1 MB. body-parser's req._body guard prevents double parsing.
 import express, { Router } from 'express';
+import multer from 'multer';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { DATA_DIR, resolveSafe, PathError } from '../lib/paths.js';
+import { zipRead } from '../lib/zip.js';
 
 const SITES_DIR = path.join(DATA_DIR, 'sites');
 const SITES_FILE = path.join(DATA_DIR, 'sites.json');
@@ -30,6 +34,11 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024; // per uploaded file (decoded)
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024; // per /files request (decoded)
 // base64 inflates by 4/3; leave headroom for the JSON envelope
 const MAX_UPLOAD_BODY = Math.ceil((MAX_REQUEST_BYTES * 4) / 3) + 256 * 1024;
+const MAX_ZIP_BYTES = 25 * 1024 * 1024; // per /zip upload (raw archive)
+const uploadZip = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_ZIP_BYTES },
+});
 
 const apiRouter = Router();
 const serveRouter = Router();
@@ -176,6 +185,71 @@ apiRouter.post('/:name/files', express.json({ limit: MAX_UPLOAD_BODY }), async (
       written++;
     }
     res.json({ written, site: name });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /:name/usage -> { bytes, files } for one site (walks the site folder).
+apiRouter.get('/:name/usage', async (req, res, next) => {
+  try {
+    const name = req.params.name;
+    if (!isSiteName(name)) return res.status(404).json({ error: 'Site not found: ' + name });
+    const siteDir = path.join(SITES_DIR, name);
+    if (!fs.existsSync(siteDir)) return res.status(404).json({ error: 'Site not found: ' + name });
+    const { fileCount, bytes } = await statSite(name);
+    res.json({ bytes, files: fileCount });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /:name/zip — replace a site's whole folder with a ZIP archive
+// (multipart form field "zip", memory storage, capped at 25 MB). Every entry
+// path is sanitized (relative, no '..') and pre-resolved through resolveSafe
+// BEFORE the old site is touched, so a rejected upload never wipes anything.
+apiRouter.post('/:name/zip', uploadZip.single('zip'), async (req, res, next) => {
+  try {
+    const name = req.params.name;
+    if (!isSiteName(name)) return res.status(404).json({ error: 'Site not found: ' + name });
+    const siteDir = path.join(SITES_DIR, name);
+    const registry = loadRegistry();
+    if (!registry.some((s) => s.name === name)) {
+      // auto-create: a ZIP upload is as good as a create call
+      ensureSitesDir();
+      const site = { name, createdAt: new Date().toISOString() };
+      saveRegistry([...registry, site]);
+      await fsp.mkdir(siteDir, { recursive: true });
+    }
+    if (!req.file || !Buffer.isBuffer(req.file.buffer)) {
+      return res.status(400).json({ error: 'Send the archive as multipart form field "zip"' });
+    }
+
+    let entries;
+    try {
+      entries = zipRead(req.file.buffer); // skips directory entries itself
+    } catch (err) {
+      return res.status(400).json({ error: 'Not a readable ZIP file: ' + err.message });
+    }
+
+    const planned = [];
+    for (const e of entries) {
+      const rel = e.path.trim().replace(/\\/g, '/');
+      if (!rel || rel.startsWith('/') || rel.split('/').some((seg) => seg === '..')) {
+        return res.status(400).json({ error: 'Unsafe path in ZIP: ' + e.path });
+      }
+      const abs = resolveSafe(rel, siteDir); // throws PathError on escape
+      planned.push({ abs, data: e.data });
+    }
+
+    // all entries validated — now (and only now) replace the site contents
+    await fsp.rm(siteDir, { recursive: true, force: true });
+    await fsp.mkdir(siteDir, { recursive: true });
+    for (const { abs, data } of planned) {
+      await fsp.mkdir(path.dirname(abs), { recursive: true });
+      await fsp.writeFile(abs, data);
+    }
+    res.json({ ok: true, site: name, files: planned.length });
   } catch (err) {
     next(err);
   }

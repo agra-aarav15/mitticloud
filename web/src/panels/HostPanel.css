@@ -23,6 +23,31 @@
   margin-top: 3px;
 }
 
+/* Lock token bar (shown when a write needs the access token) */
+.hs-token-label {
+  flex: 1;
+  min-width: 150px;
+}
+.hs-token-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  width: 170px;
+}
+.hs-token-input:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 1px;
+}
+.hs-token-btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
 .hs-block {
   display: flex;
   flex-direction: column;

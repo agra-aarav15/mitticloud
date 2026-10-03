@@ -13,30 +13,74 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024 // server refuses files over 2 MB
 const BATCH_FILES = 20
 const BATCH_BYTES = 16 * 1024 * 1024 // stay under the server's 25 MB/request cap
 
+// --- local fetch helpers (api.js is shared; writes here attach the lock token) ---
+const TOKEN_KEY = 'mitti_token'
+const getToken = () => {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+const storeToken = (t) => {
+  try {
+    if (t) sessionStorage.setItem(TOKEN_KEY, t)
+    else sessionStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 async function j(res) {
   const d = await res.json().catch(() => ({}))
   if (!res.ok) throw Object.assign(new Error(d.error || res.statusText), { status: res.status })
   return d
 }
 
+// Wraps fetch for writes: attaches the lock token, and on 401 clears it so the
+// inline token bar re-asks on the next render.
+const authedFetch = (url, opts = {}) =>
+  fetch(url, {
+    ...opts,
+    headers: { 'x-mitti-token': getToken(), ...(opts.headers || {}) }
+  }).then((res) => {
+    if (res.status === 401) {
+      storeToken('')
+      throw Object.assign(new Error('Locked — enter your access token'), { status: 401 })
+    }
+    return res
+  })
+
 const fetchSites = () => fetch('/api/sites').then(j).then((d) => d.sites || [])
 
 const createSite = (name) =>
-  fetch('/api/sites', {
+  authedFetch('/api/sites', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
   }).then(j)
 
 const uploadSiteFiles = (name, files) =>
-  fetch('/api/sites/' + encodeURIComponent(name) + '/files', {
+  authedFetch('/api/sites/' + encodeURIComponent(name) + '/files', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ files })
   }).then(j)
 
+const uploadSiteZip = (name, file) => {
+  const fd = new FormData()
+  fd.append('zip', file)
+  return authedFetch('/api/sites/' + encodeURIComponent(name) + '/zip', {
+    method: 'POST',
+    body: fd
+  }).then(j)
+}
+
+const siteUsageReq = (name) =>
+  fetch('/api/sites/' + encodeURIComponent(name) + '/usage').then(j)
+
 const deleteSite = (name) =>
-  fetch('/api/sites/' + encodeURIComponent(name), { method: 'DELETE' }).then(j)
+  authedFetch('/api/sites/' + encodeURIComponent(name), { method: 'DELETE' }).then(j)
 
 const siteUrl = (name) => window.location.origin + '/s/' + name
 
@@ -64,26 +108,57 @@ export default function HostPanel() {
   const [sites, setSites] = useState(null) // null = loading
   const [name, setName] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [zipBusy, setZipBusy] = useState(false)
   const [progress, setProgress] = useState('')
   const [busyName, setBusyName] = useState(null)
   const [confirmName, setConfirmName] = useState(null)
+  const [usageByName, setUsageByName] = useState({})
+  const [needToken, setNeedToken] = useState(false)
+  const [tokenDraft, setTokenDraft] = useState('')
   const mountedRef = useRef(true)
   const confirmTimerRef = useRef(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (withUsage = true) => {
+    let list = []
     try {
-      const list = await fetchSites()
-      if (!mountedRef.current) return
-      setSites(list)
+      list = await fetchSites()
     } catch {
-      if (mountedRef.current) setSites([])
+      list = []
+    }
+    if (!mountedRef.current) return
+    setSites(list)
+    if (withUsage && list.length > 0) {
+      const found = await Promise.all(
+        list.map(async (s) => {
+          try {
+            const u = await siteUsageReq(s.name)
+            return u ? [s.name, u] : null
+          } catch {
+            return null // endpoint may not exist yet — chips fall back to list data
+          }
+        })
+      )
+      if (!mountedRef.current) return
+      const map = {}
+      for (const f of found) if (f) map[f[0]] = f[1]
+      setUsageByName(map)
     }
   }, [])
 
   useEffect(() => {
     mountedRef.current = true
     load()
-    const timer = setInterval(load, POLL_MS)
+    // If the vault is locked and we hold no token, surface the inline token bar
+    // before the first write fails. The endpoint may not exist yet — stay silent.
+    ;(async () => {
+      try {
+        const d = await fetch('/api/lock-status').then(j)
+        if (mountedRef.current && d && d.locked && !getToken()) setNeedToken(true)
+      } catch {
+        /* not ready yet */
+      }
+    })()
+    const timer = setInterval(() => load(false), POLL_MS)
     return () => {
       mountedRef.current = false
       clearInterval(timer)
@@ -91,23 +166,48 @@ export default function HostPanel() {
     }
   }, [load])
 
+  const saveToken = (e) => {
+    e.preventDefault()
+    const t = tokenDraft.trim()
+    if (!t) return
+    storeToken(t)
+    setTokenDraft('')
+    setNeedToken(false)
+    toast('Token saved', 'ok')
+  }
+
   // folder input needs the directory attribute set on the DOM node itself
   const setFolderInput = (el) => {
     if (el) el.webkitdirectory = true
   }
 
-  const pick = async (e) => {
-    const picked = Array.from(e.target.files || [])
-    e.target.value = '' // allow re-picking the same folder
+  const validName = () => {
     const siteName = name.trim()
     if (!siteName) {
       toast('Give the site a name first', 'info')
-      return
+      return null
     }
     if (!NAME_RE.test(siteName)) {
       toast('Name can use lowercase letters, digits and dashes (max 32)', 'err')
-      return
+      return null
     }
+    return siteName
+  }
+
+  const ensureSite = async (siteName) => {
+    try {
+      await createSite(siteName)
+    } catch (err) {
+      if (err.status !== 409) throw err
+      toast('Site already exists — updating its files', 'info')
+    }
+  }
+
+  const pick = async (e) => {
+    const picked = Array.from(e.target.files || [])
+    e.target.value = '' // allow re-picking the same folder
+    const siteName = validName()
+    if (!siteName) return
     if (picked.length === 0) {
       toast('That folder is empty', 'info')
       return
@@ -121,12 +221,7 @@ export default function HostPanel() {
     setUploading(true)
     try {
       setProgress('Creating site ' + siteName + '…')
-      try {
-        await createSite(siteName)
-      } catch (err) {
-        if (err.status !== 409) throw err
-        toast('Site already exists — updating its files', 'info')
-      }
+      await ensureSite(siteName)
 
       // batch uploads to stay under the server's per-request cap
       const batches = []
@@ -157,12 +252,39 @@ export default function HostPanel() {
 
       toast('Site published at /s/' + siteName, 'ok')
       if (mountedRef.current) setName('')
-      await load()
+      await load(true)
     } catch (err) {
+      if (err && err.status === 401 && mountedRef.current) setNeedToken(true)
       toast(err.message || 'Could not publish the site', 'err')
     } finally {
       if (mountedRef.current) {
         setUploading(false)
+        setProgress('')
+      }
+    }
+  }
+
+  const pickZip = async (e) => {
+    const file = (e.target.files || [])[0]
+    e.target.value = '' // allow re-picking the same zip
+    const siteName = validName()
+    if (!siteName || !file) return
+    setZipBusy(true)
+    try {
+      setProgress('Creating site ' + siteName + '…')
+      await ensureSite(siteName)
+      if (mountedRef.current) setProgress('Uploading zip…')
+      const r = await uploadSiteZip(siteName, file)
+      const n = r && typeof r.files === 'number' ? r.files : null
+      toast(n != null ? 'Published ' + n + ' files at /s/' + siteName : 'Site published at /s/' + siteName, 'ok')
+      if (mountedRef.current) setName('')
+      await load(true)
+    } catch (err) {
+      if (err && err.status === 401 && mountedRef.current) setNeedToken(true)
+      toast(err.message || 'Could not publish the zip', 'err')
+    } finally {
+      if (mountedRef.current) {
+        setZipBusy(false)
         setProgress('')
       }
     }
@@ -192,8 +314,9 @@ export default function HostPanel() {
         toast('Site deleted', 'ok')
         setConfirmName(null)
       }
-      await load()
+      await load(true)
     } catch (err) {
+      if (err && err.status === 401 && mountedRef.current) setNeedToken(true)
       toast(err.message || 'Could not delete the site', 'err')
     } finally {
       if (mountedRef.current) setBusyName(null)
@@ -208,6 +331,25 @@ export default function HostPanel() {
           <div className="hs-subtitle muted">Free website hosting from this phone</div>
         </div>
       </div>
+
+      {needToken && (
+        <form className="banner" onSubmit={saveToken}>
+          <Icon name="lock" size={15} />
+          <span className="hs-token-label">Vault is locked — enter your access token to make changes.</span>
+          <input
+            className="hs-token-input"
+            type="password"
+            value={tokenDraft}
+            onChange={(e) => setTokenDraft(e.target.value)}
+            placeholder="access token"
+            aria-label="Access token"
+            autoFocus
+          />
+          <button type="submit" className="btn btn-primary hs-token-btn" disabled={!tokenDraft.trim()}>
+            Save
+          </button>
+        </form>
+      )}
 
       <section className="hs-block">
         <div className="hs-label muted">New site</div>
@@ -224,7 +366,7 @@ export default function HostPanel() {
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
-              disabled={uploading}
+              disabled={uploading || zipBusy}
             />
             <label className="btn btn-primary hs-pick">
               <Icon name="upload" size={15} />
@@ -235,12 +377,24 @@ export default function HostPanel() {
                 className="hs-file"
                 onChange={pick}
                 multiple
-                disabled={uploading}
+                disabled={uploading || zipBusy}
                 aria-label="Choose a folder to host"
               />
             </label>
+            <label className="btn hs-pick">
+              <Icon name="file" size={15} />
+              {zipBusy ? 'Publishing…' : 'Upload ZIP'}
+              <input
+                type="file"
+                className="hs-file"
+                accept=".zip,application/zip,application/x-zip-compressed"
+                onChange={pickZip}
+                disabled={uploading || zipBusy}
+                aria-label="Choose a ZIP file to host"
+              />
+            </label>
           </div>
-          {uploading && progress ? <div className="hs-progress">{progress}</div> : null}
+          {(uploading || zipBusy) && progress ? <div className="hs-progress">{progress}</div> : null}
         </div>
       </section>
 
@@ -264,52 +418,57 @@ export default function HostPanel() {
             Cloudflare Tunnel for a public URL.
           </div>
         ) : (
-          sites.map((site) => (
-            <section key={site.name} className="hs-card glass">
-              <div className="hs-card-head">
-                <div className="hs-card-title">
-                  <span className="hs-name">{site.name}</span>
-                  <span className="chip">
-                    {site.fileCount} {site.fileCount === 1 ? 'file' : 'files'}
-                  </span>
-                  <span className="chip">{humanizeBytes(site.bytes)}</span>
+          sites.map((site) => {
+            const u = usageByName[site.name]
+            const files = u && typeof u.files === 'number' ? u.files : site.fileCount
+            const bytes = u && typeof u.bytes === 'number' ? u.bytes : site.bytes
+            return (
+              <section key={site.name} className="hs-card glass">
+                <div className="hs-card-head">
+                  <div className="hs-card-title">
+                    <span className="hs-name">{site.name}</span>
+                    <span className="chip">
+                      {files} {files === 1 ? 'file' : 'files'}
+                    </span>
+                    <span className="chip">{humanizeBytes(bytes)}</span>
+                  </div>
+                  <div className="hs-card-actions">
+                    {confirmName === site.name ? (
+                      <button
+                        className="btn btn-danger hs-sure"
+                        onClick={() => remove(site)}
+                        disabled={busyName === site.name}
+                      >
+                        Sure?
+                      </button>
+                    ) : (
+                      <button
+                        className="btn iconbtn btn-danger"
+                        onClick={() => askRemove(site)}
+                        aria-label={'Delete ' + site.name}
+                        title="Delete"
+                        disabled={busyName === site.name}
+                      >
+                        <Icon name="trash" size={15} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="hs-card-actions">
-                  {confirmName === site.name ? (
-                    <button
-                      className="btn btn-danger hs-sure"
-                      onClick={() => remove(site)}
-                      disabled={busyName === site.name}
-                    >
-                      Sure?
-                    </button>
-                  ) : (
-                    <button
-                      className="btn iconbtn btn-danger"
-                      onClick={() => askRemove(site)}
-                      aria-label={'Delete ' + site.name}
-                      title="Delete"
-                      disabled={busyName === site.name}
-                    >
-                      <Icon name="trash" size={15} />
-                    </button>
-                  )}
+                <div className="hs-meta">
+                  <button
+                    type="button"
+                    className="hs-url"
+                    onClick={() => copyUrl(site)}
+                    title="Copy the full site URL"
+                  >
+                    <span className="hs-url-path">{site.url || '/s/' + site.name}</span>
+                    <Icon name="upload" size={12} />
+                  </button>
+                  <span className="hs-created muted">hosted {timeAgo(site.createdAt)}</span>
                 </div>
-              </div>
-              <div className="hs-meta">
-                <button
-                  type="button"
-                  className="hs-url"
-                  onClick={() => copyUrl(site)}
-                  title="Copy the full site URL"
-                >
-                  <span className="hs-url-path">{site.url || '/s/' + site.name}</span>
-                  <Icon name="upload" size={12} />
-                </button>
-                <span className="hs-created muted">hosted {timeAgo(site.createdAt)}</span>
-              </div>
-            </section>
-          ))
+              </section>
+            )
+          })
         )}
       </section>
     </div>

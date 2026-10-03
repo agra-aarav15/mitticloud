@@ -376,3 +376,18 @@
 .tk-empty-cta {
   margin-top: 12px;
 }
+
+/* Battery-mode gate banner (same interaction as the Sandbox) */
+.tk-banner .tk-banner-msg {
+  flex: 1;
+  min-width: 0;
+}
+.tk-banner .tk-banner-btn {
+  min-height: 32px;
+  padding: 5px 12px;
+  border-radius: 9px;
+}
+.tk-banner .iconbtn {
+  width: 32px;
+  min-height: 32px;
+}

@@ -20,6 +20,113 @@
   flex-wrap: wrap;
 }
 
+/* Lock token bar (shown when a write needs the access token) */
+.fl-token-label {
+  flex: 1;
+  min-width: 150px;
+}
+.fl-token-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  width: 170px;
+}
+.fl-token-input:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 1px;
+}
+.fl-token-btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+/* Usage chips (from /api/files/usage) */
+.fl-usage {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fl-usage .chip svg {
+  flex: none;
+}
+
+/* Search box */
+.fl-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.fl-search-ic {
+  position: absolute;
+  left: 11px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.fl-search-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 11px;
+  padding: 9px 12px 9px 32px;
+  font-family: inherit;
+  font-size: 13.5px;
+  width: 200px;
+}
+.fl-search-input::placeholder {
+  color: var(--muted);
+}
+.fl-search-input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.fl-search-clear {
+  cursor: pointer;
+  font-family: inherit;
+  background: none;
+  margin-left: 8px;
+}
+.fl-search-clear:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Upload progress text */
+.fl-progress {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bulk bar (when items are selected) */
+.fl-bulk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+}
+.fl-bulk-count {
+  font-size: 13px;
+  font-weight: 600;
+}
+.fl-bulk .btn {
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+.fl-bulk a.btn {
+  text-decoration: none;
+}
+
 /* Inline New Folder form */
 .fl-mkform {
   display: flex;
@@ -106,13 +213,56 @@
 
 .fl-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 72px auto;
+  grid-template-columns: auto minmax(0, 1fr) auto 72px auto;
   align-items: center;
   gap: 10px;
   min-height: 48px;
   padding: 0 10px;
   border-radius: 10px;
   transition: background 0.15s;
+}
+
+/* Per-row checkbox (bulk selection) */
+.fl-check {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: #fafafa;
+  cursor: pointer;
+}
+
+/* Inline rename / move / copy form inside a row */
+.fl-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 0;
+}
+.fl-edit-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.fl-edit-input::placeholder {
+  color: var(--muted);
+}
+.fl-edit-input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.fl-edit .iconbtn {
+  width: 32px;
+  min-height: 32px;
+  border-radius: 9px;
 }
 .fl-row:hover {
   background: rgba(255, 255, 255, 0.035);
@@ -173,6 +323,12 @@
 }
 
 /* Skeleton rows */
+.fl-sk-check {
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  flex: none;
+}
 .fl-sk-ic {
   width: 17px;
   height: 17px;
@@ -194,6 +350,17 @@
     display: none;
   }
   .fl-row {
-    grid-template-columns: minmax(0, 1fr) 64px auto;
+    grid-template-columns: auto minmax(0, 1fr) 64px auto;
+  }
+  .fl-actions {
+    gap: 4px;
+  }
+  .fl-actions .iconbtn {
+    width: 30px;
+    min-height: 30px;
+    border-radius: 8px;
+  }
+  .fl-search-input {
+    width: 150px;
   }
 }

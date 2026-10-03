@@ -24,6 +24,39 @@
   font-size: 12.5px;
 }
 
+/* Upload progress text (one request per photo) */
+.ph-progress {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lock token bar (shown when a write needs the access token) */
+.ph-token-label {
+  flex: 1;
+  min-width: 150px;
+}
+.ph-token-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  width: 170px;
+}
+.ph-token-input:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 1px;
+}
+.ph-token-btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
 /* Inline border spinner (button shows it while uploading) */
 .ph-spinner {
   width: 14px;
@@ -92,6 +125,47 @@
 .ph-tile:focus-within .ph-del {
   opacity: 1;
   transform: none;
+}
+
+/* Favorite star: top-left twin of the delete button; filled when favorite.
+   CSS fill overrides the icon's fill="none" presentation attribute. */
+.ph-star {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 10, 10, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #e5e5e5;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.18s, transform 0.18s;
+}
+.ph-tile:hover .ph-star,
+.ph-tile:focus-within .ph-star,
+.ph-star.is-fav {
+  opacity: 1;
+  transform: none;
+}
+.ph-star:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.ph-star:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 1px;
+}
+.ph-star.is-fav svg {
+  fill: currentColor;
 }
 
 .ph-meta {

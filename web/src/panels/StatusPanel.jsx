@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { fetchStatus, humanizeBytes, humanizeUptime } from '../api.js'
+import { fetchStatus, humanizeBytes, humanizeUptime, toast } from '../api.js'
 import './StatusPanel.css'
 
 const POLL_MS = 30000
@@ -10,6 +10,41 @@ const TUNNEL_LABELS = {
   tailscale: 'Tailscale',
   cloudflared: 'Cloudflare Tunnel'
 }
+
+// --- local fetch helpers for the lock (api.js is shared; this is panel-local) ---
+const TOKEN_KEY = 'mitti_token'
+const getToken = () => {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+const storeToken = (t) => {
+  try {
+    if (t) sessionStorage.setItem(TOKEN_KEY, t)
+    else sessionStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+async function jL(res) {
+  const d = await res.json().catch(() => ({}))
+  if (!res.ok) throw Object.assign(new Error(d.error || res.statusText), { status: res.status })
+  return d
+}
+
+const lockStatusReq = () => fetch('/api/lock-status').then(jL)
+
+// PUT /api/lock — body token '' disables the lock; the current token rides the
+// x-mitti-token header so an authenticated user can turn the lock off.
+const putLockReq = (token, header) =>
+  fetch('/api/lock', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-mitti-token': header || '' },
+    body: JSON.stringify({ token })
+  }).then(jL)
 
 function CardHead({ icon, label, mocked, light }) {
   return (
@@ -69,6 +104,10 @@ export default function StatusPanel() {
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState(false)
   const [dismissed, setDismissed] = useState(false)
+  const [lock, setLock] = useState(null) // null = unknown / endpoint not ready (card hidden)
+  const [lockMode, setLockMode] = useState(null) // null | 'set' | 'clear'
+  const [lockTok, setLockTok] = useState('')
+  const [lockBusy, setLockBusy] = useState(false)
   const mountedRef = useRef(true)
 
   // Silent loader: returns success so callers decide how to surface failures.
@@ -84,6 +123,16 @@ export default function StatusPanel() {
     }
   }, [])
 
+  // Lock state is read on load; a missing endpoint keeps the card hidden.
+  const loadLock = useCallback(async () => {
+    try {
+      const d = await lockStatusReq()
+      if (mountedRef.current) setLock(d && typeof d.locked === 'boolean' ? d : null)
+    } catch {
+      if (mountedRef.current) setLock(null)
+    }
+  }, [])
+
   useEffect(() => {
     mountedRef.current = true
     ;(async () => {
@@ -92,6 +141,7 @@ export default function StatusPanel() {
       setLoading(false)
       if (!ok) setOffline(true)
     })()
+    loadLock()
 
     const timer = setInterval(() => {
       load()
@@ -106,7 +156,7 @@ export default function StatusPanel() {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [load])
+  }, [load, loadLock])
 
   const anyMocked = Boolean(
     status && ((status.battery && status.battery.mocked) || (status.storage && status.storage.mocked))
@@ -118,6 +168,52 @@ export default function StatusPanel() {
   const refresh = async () => {
     const ok = await load()
     if (!ok && mountedRef.current) setOffline(true)
+    loadLock()
+  }
+
+  // --- lock flows (two-step: the button reveals an inline confirm form) ---
+  const submitSetLock = async (e) => {
+    e.preventDefault()
+    const t = lockTok.trim()
+    if (!t || lockBusy) return
+    setLockBusy(true)
+    try {
+      await putLockReq(t, t)
+      if (!mountedRef.current) return
+      storeToken(t) // other panels pick the token up from sessionStorage
+      toast('Lock enabled — writes now need your token', 'ok')
+      setLockMode(null)
+      setLockTok('')
+      await loadLock()
+    } catch (err) {
+      if (mountedRef.current) toast(err && err.message ? err.message : 'Could not set the lock.', 'err')
+    } finally {
+      if (mountedRef.current) setLockBusy(false)
+    }
+  }
+
+  const submitClearLock = async (e) => {
+    e.preventDefault()
+    const t = lockTok.trim()
+    if (!t || lockBusy) return
+    setLockBusy(true)
+    try {
+      await putLockReq('', t)
+      if (!mountedRef.current) return
+      toast('Lock disabled', 'ok')
+      setLockMode(null)
+      setLockTok('')
+      await loadLock()
+    } catch (err) {
+      if (mountedRef.current) toast(err && err.message ? err.message : 'Could not disable the lock.', 'err')
+    } finally {
+      if (mountedRef.current) setLockBusy(false)
+    }
+  }
+
+  const closeLockForm = () => {
+    setLockMode(null)
+    setLockTok('')
   }
 
   if (loading) {
@@ -324,6 +420,77 @@ export default function StatusPanel() {
             {tunnel.mode === 'cloudflared' && <span className="chip chip-ok">Secure tunnel</span>}
           </div>
         </section>
+
+        {lock && (
+          <section className="st-card glass st-wide" aria-label="Security">
+            <CardHead icon="lock" label="Security" />
+            <div className="st-big">{lock.locked ? 'Locked' : 'Open'}</div>
+            <div className="st-hint muted">
+              {lock.locked
+                ? 'Changing files and photos needs your access token.'
+                : 'Anyone with access can change files and photos.'}
+            </div>
+            <div className="st-lockrow">
+              <span className={'chip' + (lock.locked ? ' chip-warn' : '')}>{lock.locked ? 'locked' : 'open'}</span>
+              {lock.locked && lock.source && <span className="chip">via {lock.source}</span>}
+              {lockMode === null && (
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setLockMode(lock.locked ? 'clear' : 'set')
+                    setLockTok(lock.locked ? getToken() : '')
+                  }}
+                  disabled={lockBusy}
+                >
+                  <Icon name={lock.locked ? 'unlock' : 'lock'} size={15} />
+                  {lock.locked ? 'Clear lock' : 'Set lock'}
+                </button>
+              )}
+            </div>
+            {lockMode === 'set' && (
+              <form className="st-lockform" onSubmit={submitSetLock}>
+                <input
+                  className="st-lockinput"
+                  type="password"
+                  value={lockTok}
+                  onChange={(e) => setLockTok(e.target.value)}
+                  placeholder="New access token"
+                  aria-label="New access token"
+                  autoFocus
+                  maxLength={200}
+                  disabled={lockBusy}
+                />
+                <button type="button" className="btn" onClick={closeLockForm} disabled={lockBusy}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={lockBusy || !lockTok.trim()}>
+                  {lockBusy ? 'Saving…' : 'Save lock'}
+                </button>
+              </form>
+            )}
+            {lockMode === 'clear' && (
+              <form className="st-lockform" onSubmit={submitClearLock}>
+                <input
+                  className="st-lockinput"
+                  type="password"
+                  value={lockTok}
+                  onChange={(e) => setLockTok(e.target.value)}
+                  placeholder="Current access token"
+                  aria-label="Current access token"
+                  autoFocus
+                  maxLength={200}
+                  disabled={lockBusy}
+                />
+                <button type="button" className="btn" onClick={closeLockForm} disabled={lockBusy}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-danger" disabled={lockBusy || !lockTok.trim()}>
+                  {lockBusy ? 'Disabling…' : 'Disable lock'}
+                </button>
+              </form>
+            )}
+          </section>
+        )}
       </div>
     </div>
   )

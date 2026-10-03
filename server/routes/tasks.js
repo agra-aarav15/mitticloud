@@ -318,6 +318,17 @@ tasksRouter.post('/:id/run', async (req, res, next) => {
       return res.status(409).json({ error: 'Task is already running' });
     }
     const force = (req.body || {}).force === true;
+    // Manual runs ask first: a real device on low battery gets the same
+    // "could heat the phone" gate as the sandbox and the agent (the
+    // scheduler keeps its silent defer — nobody is watching at 3am).
+    const battery = await readBattery();
+    if (isLowBattery(battery) && !force) {
+      return res.json({
+        batteryMode: true,
+        level: Number(battery.level),
+        message: 'Task work could heat the phone. Run anyway?',
+      });
+    }
     inFlight.add(task.id);
     try {
       const out = await attemptRun(task, { force });

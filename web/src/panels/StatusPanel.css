@@ -190,6 +190,52 @@
   margin-top: auto;
 }
 
+/* Security card (spans the grid) — lock status + set/clear flow */
+.st-wide {
+  grid-column: 1 / -1;
+}
+.st-lockrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: auto;
+}
+.st-lockrow .btn {
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+.st-lockform {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.st-lockinput {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13.5px;
+  width: 230px;
+}
+.st-lockinput::placeholder {
+  color: var(--muted);
+}
+.st-lockinput:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 1px;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.st-lockform .btn {
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+
 /* Retry button inside the offline empty state */
 .st-retry {
   margin-top: 14px;

@@ -21,20 +21,22 @@
 - **Free-tier servers come and go.** Oracle's "always free" instances get reclaimed, credits expire, fine print changes. A drawer-phone never asks for a credit card and never sends you a bill.
 - **Half a billion phones are sleeping.** ~500 million old phones sit in drawers doing nothing while e-waste piles up. The most powerful computer you already own deserves better than a junk drawer.
 
-## What you get in v0.6
+## What you get in v0.7
 
 | Feature | What it does |
 |---|---|
-| 📊 **Live dashboard** | Battery level & charging state, storage, uptime, and tunnel status — at a glance, from any device. |
-| 🖼️ **Photo vault** | Upload photos from any device on your Wi-Fi; automatically organized by date (`vault/photos/YYYY/MM/DD/`). |
-| 📁 **File server** | Browse folders, download anything at full LAN speed, create and delete folders — no accounts, no round-trips. |
-| 💻 **Sandbox** | Run JS or Python snippets on the phone from the dashboard — safely, with timeouts and output caps. |
+| 📊 **Live dashboard** | Battery level & charging state, storage, uptime, tunnel status, deep health checks — at a glance, from any device. |
+| 🖼️ **Photo backup** | Bulk upload from any device, automatic duplicate detection, date albums, favorites, download-all as ZIP. |
+| 📁 **Real drive** | Upload files and folders (streaming — big files OK), rename, move, copy, multi-select delete, download a folder as ZIP, search, per-folder storage usage. |
+| 🌐 **MittiHost** | Host real websites from the phone — upload a folder or a ZIP, live at `/s/<name>` on your LAN or Tailscale; one command gives a free public URL. |
+| 💻 **Sandbox** | Run JS or Python on the phone from the dashboard — safely, with timeouts and output caps. |
 | ⚡ **MittiOps** | Scheduled jobs + webhook triggers (`POST /hook/<id>`) with run history — automation that lives on your phone. |
-| 🌐 **MittiHost** | Host real websites from the phone, free — pick a folder of HTML, it's live at `/s/<name>` on your LAN or Tailscale. For everyone who can't pay for hosting. |
-| 🤖 **MittiAgent** | A background AI helper on a schedule (free Gemini key) that writes notes, runs tiny scripts and fetches pages — it works while you sleep. |
-| 🧠 **Cloud Mode** | Your laptop coding agent's brain, stored on the phone: context window, chat history and project files — resume any session from any device, or start a new chat. |
-| 🔋 **Battery mode** | Under 30% on battery, heavy work asks first: *"This could heat the phone — run anyway?"* Deferred jobs run automatically when charging. |
-| 🗺️ **Living guides** | A checklist that reads real system state (Termux? Tailscale? first task? first site?) and ticks itself off — useful long after install. |
+| 🤖 **MittiAgent** | A background AI helper on a schedule (free Gemini key) that writes notes, runs tiny scripts and fetches pages. |
+| 🧠 **Cloud Mode** | Your laptop coding agent's brain on the phone: context window, chat history, project files — resume any session from any device (`scripts/mitti-bridge.mjs`). |
+| 🔒 **Lock** | Optional one-token lock: visitors can look, only the token can change anything. |
+| 🗺️ **Living guides** | A checklist that reads real system state (Termux? Tailscale? first site? agent linked?) and ticks itself off — useful long after install. |
+| 🔋 **Battery mode** | Under 30% on battery, heavy work asks first: *"This could heat the phone — run anyway?"* Deferred jobs run when charging. |
+| 🛡️ **Robust** | Graceful restarts, daily settings backup (7 days kept), deep `/api/health?deep=1`, and a one-command test suite: `npm test` (65 checks). |
 
 ## Quick Start (Termux)
 
@@ -140,7 +142,7 @@ Built by **Aarav ([@agra-aarav15](https://github.com/agra-aarav15))** with a fle
 
 ---
 
-> **Note:** v0.6.0 — MittiHost, MittiAgent and Cloud Mode shipped and tested. Live screenshots in [`preview/`](preview/).
+> **Note:** v0.7.0 — the backend grew up: real drive, real photo backup, lock, health checks, daily backups, ZIP everywhere. Live screenshots in [`preview/`](preview/).
 
 ## License
 

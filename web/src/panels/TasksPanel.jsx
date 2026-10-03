@@ -37,6 +37,7 @@ export default function TasksPanel() {
   const [form, setForm] = useState(BLANK_FORM)
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [gate, setGate] = useState(null) // battery-mode gate from the server
   const [expanded, setExpanded] = useState(() => new Set())
   const mountedRef = useRef(true)
 
@@ -144,10 +145,14 @@ export default function TasksPanel() {
     }
   }
 
-  const runNow = async (task) => {
+  const runNow = async (task, force = false) => {
     setBusyId(task.id)
     try {
-      const out = await runTask(task.id)
+      const out = await runTask(task.id, force)
+      if (out.batteryMode) {
+        setGate({ ...out, taskId: task.id })
+        return
+      }
       if (out.status === 'deferred') {
         toast('Deferred — ' + (out.error || 'battery mode'), 'info')
       } else if (out.status === 'ok') {
@@ -199,6 +204,26 @@ export default function TasksPanel() {
           </button>
         )}
       </div>
+
+      {gate && (
+        <div className="banner tk-banner" role="status">
+          <Icon name="alert" size={15} />
+          <span className="tk-banner-msg">{gate.message}</span>
+          <button
+            className="btn tk-banner-btn"
+            onClick={() => {
+              const t = (tasks || []).find((x) => x.id === gate.taskId)
+              setGate(null)
+              if (t) runNow(t, true)
+            }}
+          >
+            Run anyway
+          </button>
+          <button className="btn iconbtn" onClick={() => setGate(null)} aria-label="Dismiss warning" title="Dismiss">
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      )}
 
       {formOpen && (
         <form className="tk-form glass" onSubmit={submit}>

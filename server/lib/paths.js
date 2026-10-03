@@ -8,10 +8,18 @@ const LIB_DIR = path.dirname(fileURLToPath(import.meta.url)); // .../server/lib
 
 export const ROOT_DIR = path.resolve(LIB_DIR, '..', '..'); // project root
 export const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
-export const VAULT_DIR = path.join(ROOT_DIR, 'vault');
+// Tests set MITTICLOUD_VAULT_DIR / MITTICLOUD_DATA_DIR (before importing this
+// module) to run against throwaway temp folders instead of the real vault.
+const VAULT_DIR_OVERRIDE = process.env.MITTICLOUD_VAULT_DIR
+  ? path.resolve(process.env.MITTICLOUD_VAULT_DIR)
+  : null;
+const DATA_DIR_OVERRIDE = process.env.MITTICLOUD_DATA_DIR
+  ? path.resolve(process.env.MITTICLOUD_DATA_DIR)
+  : null;
+export const VAULT_DIR = VAULT_DIR_OVERRIDE || path.join(ROOT_DIR, 'vault');
 export const PHOTOS_DIR = path.join(VAULT_DIR, 'photos');
 export const FILES_DIR = path.join(VAULT_DIR, 'files');
-export const DATA_DIR = path.join(ROOT_DIR, 'data');
+export const DATA_DIR = DATA_DIR_OVERRIDE || path.join(ROOT_DIR, 'data');
 
 /** Error carrying an HTTP status code (400 by default). */
 export class PathError extends Error {

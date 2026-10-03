@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 
 import { getBattery, getStorage, isTermux } from '../lib/termux.js';
 import { getLanIPs } from '../lib/net.js';
+import { isLocked } from '../lib/auth.js';
 import { VAULT_DIR } from '../lib/paths.js';
 
 const execFileP = promisify(execFile);
@@ -75,6 +76,7 @@ router.get('/', async (req, res, next) => {
       uptimeSec: Math.floor(process.uptime()),
       version: PKG.version,
       device: { termux, platform: process.platform, lanUrls: lanUrls() },
+      security: { locked: isLocked() },
       tunnel: { mode, hint: tunnelHint(mode) },
     });
   } catch (err) {
