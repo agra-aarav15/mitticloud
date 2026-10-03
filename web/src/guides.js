@@ -1,65 +1,65 @@
-// Guided setup data — shown in the Guides panel as an accordion checklist.
+// Living checklist data — each step maps to REAL system state read from the
+// backend (/api/status, /api/tasks). Nothing here is a static install lecture;
+// the panel computes pass/pending per step and shows what is actually left.
 // Keep points short and actionable. No emojis, no fluff.
 
-export const GUIDES = [
+export const GUIDE_STEPS = [
   {
-    id: 'apps',
-    title: 'Get the apps',
-    minutes: 5,
-    points: [
+    id: 'termux',
+    title: 'Termux detected',
+    desktopNote: 'Desktop demo mode — normal for now. This passes when MittiCloud runs inside Termux on the phone.',
+    passNote: 'Termux is running this pocket cloud.',
+    pending: [
       'Install F-Droid on the phone from f-droid.org.',
-      'From F-Droid only, install Termux, Termux:Boot and Termux:API — the Play Store versions are outdated and broken.',
-      'Open the Termux:Boot app once after install, so Android is allowed to wake it on boot.'
+      'From F-Droid only, install Termux — the Play Store version is outdated and broken.',
+      'Open Termux once; it becomes the runtime for everything below.'
     ]
   },
   {
-    id: 'install',
-    title: 'Install MittiCloud',
-    minutes: 5,
-    points: [
-      'In Termux: git clone https://github.com/agra-aarav15/mitticloud.git mitticloud && cd mitticloud',
-      'Run bash scripts/install.sh — it prepares Node and the server.',
-      'When it finishes, start the cloud with npm start.'
+    id: 'battery',
+    title: 'Battery protected',
+    passNote: 'Real battery reporting is active — light mode kicks in under 30% on battery.',
+    pending: [
+      'Battery reads are mocked because this is not running on the phone yet.',
+      'On the phone: install the Termux:API app from F-Droid, then in Termux run: pkg install termux-api',
+      'MittiCloud then reads the real battery and defers jobs below 30% until charging.'
     ]
   },
   {
-    id: 'open',
-    title: 'Open your cloud',
-    minutes: 2,
-    points: [
-      'On the phone itself: http://localhost:7333',
-      'From any device on the same Wi-Fi: http://<phone-ip>:7333 — the server banner prints the IP at startup.'
-    ]
-  },
-  {
-    id: 'alive',
-    title: 'Battery & heat care',
-    minutes: 3,
-    points: [
-      'Settings → Apps → Termux → Battery → Unrestricted, so Android never kills the server.',
-      'Keep the phone plugged in — screen off is fine.',
-      '40–80% charge is the happy zone. Keep it cool and out of the sun.',
-      'On battery below 30%, MittiCloud switches to light mode and asks before heavy work — that protects your phone.'
-    ]
+    id: 'lan',
+    title: 'Reachable on your network',
+    passNote: 'The server is answering — you are looking at it.',
+    pending: []
   },
   {
     id: 'tailscale',
-    title: 'Reach it anywhere — Tailscale',
-    minutes: 10,
-    points: [
+    title: 'Private mesh (Tailscale)',
+    passNote: 'Tailscale is active — reach the cloud privately from anywhere.',
+    pending: [
       'Install the free Tailscale app on the phone and on every device you access it from.',
       'Sign in with the same account on all of them.',
       'Then open http://<phone-tailscale-ip>:7333 (100.x.x.x) from anywhere — private mesh, no port forwarding, no domain.'
     ]
   },
   {
-    id: 'cloudflared',
-    title: 'Advanced — Cloudflare Tunnel',
-    minutes: 15,
-    points: [
-      'Optional. Needs your own domain and the free cloudflared client.',
-      'A tunnel exposes the cloud to the whole public internet — not just your devices.',
-      'Only do this after adding authentication (see the roadmap).'
+    id: 'first-task',
+    title: 'First MittiOps task created',
+    passNote: 'At least one MittiOps task exists.',
+    pending: [
+      'MittiOps runs scheduled jobs and webhooks on this cloud — and defers them on low battery.',
+      'Create a task in the Tasks tab, or trigger one with POST /hook/<webhookId>.',
+      'If the phone is on battery below 30%, the job waits and runs when charging.'
+    ],
+    cta: { label: 'Open Tasks', tab: 'tasks' }
+  },
+  {
+    id: 'phone-app',
+    title: 'Install on the phone',
+    passNote: 'Running on the phone — nothing to install.',
+    pending: [
+      'Install F-Droid on the phone, then Termux, Termux:Boot and Termux:API — all from F-Droid only.',
+      'In Termux: git clone https://github.com/agra-aarav15/mitticloud.git mitticloud && cd mitticloud',
+      'Run bash scripts/install.sh, then npm start — the cloud lives at http://localhost:7333 on the phone.'
     ]
   }
 ]

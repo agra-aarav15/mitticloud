@@ -3,6 +3,7 @@ import StatusPanel from './panels/StatusPanel.jsx'
 import PhotosPanel from './panels/PhotosPanel.jsx'
 import FilesPanel from './panels/FilesPanel.jsx'
 import SandboxPanel from './panels/SandboxPanel.jsx'
+import TasksPanel from './panels/TasksPanel.jsx'
 import GuidesPanel from './panels/GuidesPanel.jsx'
 import { Icon } from './icons.jsx'
 import { onToast } from './api.js'
@@ -12,6 +13,7 @@ const TABS = [
   { id: 'photos', label: 'Photos', icon: 'image' },
   { id: 'files', label: 'Files', icon: 'folder' },
   { id: 'sandbox', label: 'Sandbox', icon: 'cpu' },
+  { id: 'tasks', label: 'Tasks', icon: 'bolt' },
   { id: 'guides', label: 'Guides', icon: 'shield' }
 ]
 
@@ -36,8 +38,23 @@ function Toasts() {
   )
 }
 
+const VALID_TABS = TABS.map((t) => t.id)
+const tabFromHash = () => {
+  const h = window.location.hash.replace('#', '')
+  return VALID_TABS.includes(h) ? h : 'status'
+}
+
 export default function App() {
-  const [tab, setTab] = useState('status')
+  const [tab, setTabState] = useState(tabFromHash)
+  const setTab = (id) => {
+    setTabState(id)
+    window.history.replaceState(null, '', id === 'status' ? '#' : '#' + id)
+  }
+  useEffect(() => {
+    const onHash = () => setTabState(tabFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
   return (
     <>
       <div className="app">
@@ -51,7 +68,7 @@ export default function App() {
               <div className="tagline">Your drawer-phone is a cloud now.</div>
             </div>
           </div>
-          <span className="chip chip-grad">v0.4.0</span>
+          <span className="chip chip-grad">v0.5.0</span>
         </header>
 
         <nav className="tabbar glass" role="tablist" aria-label="Sections">
@@ -74,7 +91,8 @@ export default function App() {
           {tab === 'photos' && <PhotosPanel />}
           {tab === 'files' && <FilesPanel />}
           {tab === 'sandbox' && <SandboxPanel />}
-          {tab === 'guides' && <GuidesPanel />}
+          {tab === 'tasks' && <TasksPanel />}
+          {tab === 'guides' && <GuidesPanel onGoTo={setTab} />}
         </main>
 
         <footer className="foot muted">MittiCloud · free &amp; open source · runs on the phone in your drawer</footer>

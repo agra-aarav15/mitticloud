@@ -31,6 +31,14 @@ function hasTailscaleIP() {
   return getLanIPs().some(({ address }) => address.startsWith('100.'));
 }
 
+// Same rule as index.js for the port, so these URLs match the banner.
+const PORT = Number.parseInt(process.env.PORT || '', 10) || 7333;
+
+/** Reachable LAN URLs, e.g. ["http://192.168.1.20:7333"]. */
+function lanUrls() {
+  return getLanIPs().map(({ address }) => `http://${address}:${PORT}`);
+}
+
 async function detectTunnel() {
   if (hasTailscaleIP() || (await commandExists('tailscale', ['version']))) {
     return 'tailscale';
@@ -66,7 +74,7 @@ router.get('/', async (req, res, next) => {
       storage,
       uptimeSec: Math.floor(process.uptime()),
       version: PKG.version,
-      device: { termux, platform: process.platform },
+      device: { termux, platform: process.platform, lanUrls: lanUrls() },
       tunnel: { mode, hint: tunnelHint(mode) },
     });
   } catch (err) {

@@ -1,6 +1,6 @@
 // MittiCloud server entrypoint.
 // Express app: JSON body parsing, static /photos mount (vault/photos),
-// static frontend (public/), the five API routers, listen 7333.
+// static frontend (public/), the six API routers, MittiOps hooks, listen 7333.
 import express from 'express';
 import multer from 'multer';
 import fs from 'node:fs';
@@ -10,6 +10,7 @@ import statusRouter from './routes/status.js';
 import photosRouter from './routes/photos.js';
 import filesRouter from './routes/files.js';
 import sandboxRouter from './routes/sandbox.js';
+import { initTasks } from './routes/tasks.js';
 import {
   DATA_DIR,
   PUBLIC_DIR,
@@ -37,6 +38,10 @@ app.use('/api/status', statusRouter);
 app.use('/api/photos', photosRouter);
 app.use('/api/files', filesRouter);
 app.use('/api/sandbox', sandboxRouter);
+
+// --- MittiOps: /api/tasks CRUD + scheduler, POST /hook/<webhookId> triggers ---
+// (must mount before the 404 catch-alls below)
+initTasks(app);
 
 // --- static: photo vault ---
 app.use('/photos', express.static(PHOTOS_DIR, { maxAge: '1h' }));
@@ -66,7 +71,7 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`MittiCloud v0.3.0 running at http://localhost:${PORT}`);
+  console.log(`MittiCloud v0.5.0 running at http://localhost:${PORT}`);
   for (const { iface, address } of getLanIPs()) {
     console.log(`  also on http://${address}:${PORT} (${iface})`);
   }

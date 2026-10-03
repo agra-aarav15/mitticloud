@@ -42,6 +42,40 @@ export const runSandbox = (language, code, confirm = false) =>
     body: JSON.stringify({ language, code, confirm })
   }).then(j)
 
+// --- MittiOps (scheduled jobs & webhooks) ---
+
+export const fetchTasks = () => fetch('/api/tasks').then(j).then((d) => d.tasks || [])
+
+export const createTask = (payload) =>
+  fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(j)
+
+export const updateTask = (id, patch) =>
+  fetch('/api/tasks/' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch)
+  }).then(j)
+
+export const deleteTask = (id) =>
+  fetch('/api/tasks/' + encodeURIComponent(id), { method: 'DELETE' }).then(j)
+
+export const runTask = (id, force = false) =>
+  fetch('/api/tasks/' + encodeURIComponent(id) + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force })
+  }).then(j)
+
+export const fetchTaskRuns = (id) =>
+  fetch('/api/tasks/' + encodeURIComponent(id) + '/runs').then(j).then((d) => d.runs || [])
+
+export const webhookPath = (webhookId) => '/hook/' + webhookId
+export const webhookUrl = (webhookId) => window.location.origin + webhookPath(webhookId)
+
 export function humanizeBytes(n) {
   if (n == null) return '—'
   if (n < 1024) return n + ' B'
@@ -62,6 +96,20 @@ export function humanizeUptime(s) {
   if (d) return d + 'd ' + h + 'h'
   if (h) return h + 'h ' + m + 'm'
   return m + 'm ' + Math.floor(s % 60) + 's'
+}
+
+export function timeAgo(iso) {
+  if (!iso) return 'never'
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return 'never'
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000))
+  if (s < 45) return 'just now'
+  const m = Math.floor(s / 60)
+  if (m < 60) return m + 'm ago'
+  const h = Math.floor(m / 60)
+  if (h < 24) return h + 'h ago'
+  const d = Math.floor(h / 24)
+  return d + 'd ago'
 }
 
 // Tiny toast bus — App hosts the renderer, panels call toast().

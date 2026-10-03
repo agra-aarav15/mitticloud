@@ -1,4 +1,4 @@
-/* GuidesPanel — panel-specific styles. Shared tokens/classes live in tokens.css. */
+/* GuidesPanel (living checklist) — panel-specific styles. Shared tokens/classes live in tokens.css. */
 
 .gd-panel {
   display: flex;
@@ -39,6 +39,7 @@
 .gd-progress-label {
   font-size: 13.5px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .gd-track {
   height: 6px;
@@ -53,7 +54,7 @@
   transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Step accordion */
+/* Step rows */
 .gd-step {
   padding: 0;
   overflow: hidden;
@@ -69,28 +70,35 @@
   color: inherit;
   font-family: inherit;
   text-align: left;
+}
+.gd-head.is-clickable {
   cursor: pointer;
 }
-.gd-head:hover .gd-name {
+.gd-head.is-clickable:hover .gd-name {
   color: #fff;
 }
-.gd-head:focus-visible {
-  outline: 2px solid var(--blue);
+.gd-head.is-clickable:focus-visible {
+  outline: 2px solid #fafafa;
   outline-offset: -2px;
   border-radius: var(--radius);
 }
-.gd-num {
+
+/* state dot: white = pass, dim = pending */
+.gd-dot {
   flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--grad);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 12.5px;
-  font-weight: 700;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
+.gd-dot.is-pass {
+  background: #fafafa;
+  border-color: #fafafa;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
+}
+
 .gd-name {
   flex: 1;
   min-width: 0;
@@ -101,11 +109,21 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.gd-step.is-done .gd-name {
+.gd-step.is-pass .gd-name {
   color: var(--muted);
 }
-.gd-min {
+.gd-state {
   flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.75;
+}
+.gd-state.is-pass {
+  color: #fafafa;
+  opacity: 1;
 }
 .gd-chevron {
   flex: none;
@@ -116,12 +134,17 @@
   transform: rotate(180deg);
 }
 
+/* Expandable body (pending steps only) */
 .gd-body {
   padding: 13px 16px 14px;
   border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 13px;
+}
+.gd-note {
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 .gd-points {
   margin: 0;
@@ -148,49 +171,64 @@
   background: var(--grad);
   opacity: 0.85;
 }
+.gd-cta {
+  min-height: 38px;
+  padding: 8px 14px;
+}
 
-/* Custom Done checkbox */
-.gd-donelabel {
-  display: inline-flex;
+/* LAN URLs block (always visible on the lan step) */
+.gd-urls {
+  padding: 11px 16px 13px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gd-url {
+  display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-  user-select: none;
-  width: fit-content;
 }
-.gd-donelabel:hover {
+.gd-url-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  border: 0;
+  background: transparent;
   color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 2px 0;
 }
-.gd-donelabel input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
+.gd-url-text:hover {
+  color: #fff;
+  text-decoration: underline;
 }
-.gd-box {
-  width: 18px;
-  height: 18px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
-  display: grid;
-  place-items: center;
-  color: transparent;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.gd-donelabel:hover .gd-box {
-  border-color: rgba(255, 255, 255, 0.35);
-}
-.gd-donelabel input:focus-visible + .gd-box {
-  outline: 2px solid var(--blue);
+.gd-url-text:focus-visible {
+  outline: 2px solid #fafafa;
   outline-offset: 2px;
 }
-.gd-donelabel input:checked + .gd-box {
-  background: var(--grad);
-  border-color: transparent;
-  color: #fff;
+.gd-url-copy {
+  flex: none;
+  width: 30px;
+  min-height: 30px;
+  border-radius: 8px;
+}
+.gd-url-hint {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* skeleton row */
+.gd-sk-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.gd-sk-line {
+  height: 14px;
 }
