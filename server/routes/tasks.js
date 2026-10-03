@@ -1,7 +1,7 @@
 // MittiOps — scheduled jobs & webhooks for the pocket cloud, battery-aware.
 //
 // SECURITY: tasks run owner-written code on the owner's own device. That is
-// the exact same trust level as the Sandbox (node -e / python -c via execFile,
+// the exact same jail rules as the agent's run_command (node -e / python -c via execFile,
 // never a shell). Nothing here assumes untrusted callers; do not expose this
 // server to the public internet without adding authentication first.
 //
@@ -110,7 +110,7 @@ function validateCoreFields({ name, kind, code }) {
 const cap = (s) =>
   typeof s === 'string' && s.length > MAX_RUN_TEXT ? s.slice(0, MAX_RUN_TEXT) : s;
 
-// --- execution (same approach as sandbox: execFile, never shell:true) ---
+// --- execution (execFile, never shell:true — same jail rules as the agent run_command) ---
 
 // Cached result of the python probe: 'python3' | 'python' | false (none).
 let pythonBin = null;
@@ -319,7 +319,7 @@ tasksRouter.post('/:id/run', async (req, res, next) => {
     }
     const force = (req.body || {}).force === true;
     // Manual runs ask first: a real device on low battery gets the same
-    // "could heat the phone" gate as the sandbox and the agent (the
+    // "could heat the phone" gate as the agent and the scheduler (the
     // scheduler keeps its silent defer — nobody is watching at 3am).
     const battery = await readBattery();
     if (isLowBattery(battery) && !force) {

@@ -19,6 +19,57 @@ const LANGS = [
   { id: 'python', label: 'python' }
 ]
 
+// One-tap examples — a tap fills the form with a real, working job.
+// They all talk to this very server, so they work on any device, any folder.
+const PRESETS = [
+  {
+    id: 'health',
+    name: 'Is my server healthy?',
+    kind: 'js',
+    code: `// Pings this phone's own server and logs the answer.
+const r = await fetch('http://127.0.0.1:7333/api/health?deep=1')
+const d = await r.json()
+console.log('server ok:', d.ok, '| free RAM:', d.mem ? d.mem.freeMB + ' MB' : 'n/a')`
+  },
+  {
+    id: 'battery',
+    name: 'Battery report',
+    kind: 'js',
+    code: `// Logs the real battery level — useful every hour on a drawer phone.
+const r = await fetch('http://127.0.0.1:7333/api/status')
+const d = await r.json()
+const b = d.battery || {}
+console.log(
+  b.present === false
+    ? 'No battery — running on AC power.'
+    : 'Battery: ' + b.level + '% | ' + (b.charging ? 'charging' : 'on battery')
+)`
+  },
+  {
+    id: 'storage',
+    name: 'Storage check',
+    kind: 'js',
+    code: `// Logs how much storage is left on the phone.
+const r = await fetch('http://127.0.0.1:7333/api/status')
+const d = await r.json()
+const s = d.storage || {}
+console.log(
+  s.free == null
+    ? 'Storage unknown on this device.'
+    : 'Free: ' + Math.round(s.free / 1e9) + ' GB | used: ' + s.usedPct + '%'
+)`
+  },
+  {
+    id: 'site',
+    name: 'Watch my website',
+    kind: 'js',
+    code: `// Checks a hosted site every run. Edit the name to YOUR site.
+const SITE = 'my-site' // change me
+const r = await fetch('http://127.0.0.1:7333/s/' + SITE + '/')
+console.log('site ' + SITE + ' responds with status', r.status)`
+  }
+]
+
 const BLANK_FORM = { name: '', kind: 'js', code: '', everyMinutes: '' }
 
 function fmtSchedule(mins) {
@@ -127,7 +178,7 @@ export default function TasksPanel() {
     const url = webhookUrl(task.webhookId)
     try {
       await navigator.clipboard.writeText(url)
-      toast('Webhook URL copied', 'ok')
+      toast('Secret link copied', 'ok')
     } catch {
       toast('Could not copy — ' + url, 'err')
     }
@@ -194,13 +245,16 @@ export default function TasksPanel() {
     <div className="tk-panel">
       <div className="tk-toolbar">
         <div>
-          <div className="tk-title">MittiOps</div>
-          <div className="tk-subtitle muted">Scheduled jobs &amp; webhooks — battery-aware</div>
+          <div className="tk-title">Tasks</div>
+          <div className="tk-subtitle muted">
+            Little jobs this phone runs for you — on a repeat, once, or when its secret link
+            is opened
+          </div>
         </div>
         {!formOpen && (
           <button className="btn btn-primary" onClick={openNew}>
             <Icon name="plus" size={15} />
-            New Task
+            New job
           </button>
         )}
       </div>
@@ -232,8 +286,8 @@ export default function TasksPanel() {
               className="tk-input"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="Task name"
-              aria-label="Task name"
+              placeholder="Name the job — like: Nightly battery report"
+              aria-label="Job name"
               maxLength={120}
               disabled={saving}
             />
@@ -251,6 +305,21 @@ export default function TasksPanel() {
               ))}
             </div>
           </div>
+          {!editingId && (
+            <div className="tk-presets">
+              <span className="muted">Start from an example:</span>
+              {PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="tk-preset"
+                  onClick={() => setForm({ name: p.name, kind: p.kind, code: p.code, everyMinutes: form.everyMinutes })}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
             className="tk-code"
             value={form.code}
@@ -266,7 +335,7 @@ export default function TasksPanel() {
           />
           <div className="tk-form-foot">
             <label className="tk-every">
-              <span className="muted">Every</span>
+              <span className="muted">Repeat every</span>
               <input
                 className="tk-input tk-input-num"
                 type="number"
@@ -274,11 +343,11 @@ export default function TasksPanel() {
                 max={10080}
                 value={form.everyMinutes}
                 onChange={(e) => setForm((f) => ({ ...f, everyMinutes: e.target.value }))}
-                placeholder="manual"
+                placeholder="—"
                 aria-label="Run interval in minutes"
                 disabled={saving}
               />
-              <span className="muted">min</span>
+              <span className="muted">min (blank = only when I press Run)</span>
             </label>
             <div className="tk-form-actions">
               <button type="button" className="btn" onClick={closeForm} disabled={saving}>
@@ -306,11 +375,12 @@ export default function TasksPanel() {
           <div className="btn iconbtn" aria-hidden="true">
             <Icon name="bolt" size={22} />
           </div>
-          No tasks yet — schedule your first job.
+          A job is a small piece of code this phone runs for you — every hour, every night,
+          or when someone opens its secret link. Try an example, they take one tap.
           <div>
             <button className="btn btn-primary tk-empty-cta" onClick={openNew}>
               <Icon name="plus" size={15} />
-              New Task
+              New job
             </button>
           </div>
         </div>
@@ -373,10 +443,10 @@ export default function TasksPanel() {
                   type="button"
                   className="tk-hook"
                   onClick={() => copyWebhook(task)}
-                  title="Copy the full webhook URL"
+                  title="Anyone with this secret link can run this job — it is a normal URL that expects a POST."
                 >
-                  <span className="tk-hook-path">POST {webhookPath(task.webhookId)}</span>
-                  <Icon name="upload" size={12} />
+                  <span className="tk-hook-path">Secret link {webhookPath(task.webhookId)}</span>
+                  <Icon name="copy" size={12} />
                 </button>
                 <span className="tk-last muted">
                   {task.lastStatus ? (

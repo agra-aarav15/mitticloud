@@ -5,12 +5,6 @@ import './StatusPanel.css'
 
 const POLL_MS = 30000
 
-const TUNNEL_LABELS = {
-  lan: 'Local network',
-  tailscale: 'Tailscale',
-  cloudflared: 'Cloudflare Tunnel'
-}
-
 // --- local fetch helpers for the lock (api.js is shared; this is panel-local) ---
 const TOKEN_KEY = 'mitti_token'
 const getToken = () => {
@@ -306,7 +300,7 @@ export default function StatusPanel() {
       {anyMocked && !dismissed && (
         <div className="banner" role="status">
           <Icon name="alert" size={15} />
-          <span>Termux not detected — showing demo data.</span>
+          <span>A value could not be read on this device — anything missing shows as “—”, never a guess.</span>
           <button
             className="btn iconbtn"
             onClick={() => setDismissed(true)}
@@ -331,24 +325,43 @@ export default function StatusPanel() {
             icon="bolt"
             label="Battery"
             mocked={battery.mocked}
-            light={!battery.charging && level != null && level < 30}
+            light={!battery.charging && battery.present !== false && level != null && level < 30}
           />
           <div className="st-batt">
             <RingGauge
               level={level}
               low={low}
               label={
-                'Battery ' +
-                (level == null ? 'unknown' : Math.round(level) + ' percent') +
-                (battery.charging ? ', charging' : '')
+                battery.present === false
+                  ? 'No battery — running on AC power'
+                  : 'Battery ' +
+                    (level == null ? 'unknown' : Math.round(level) + ' percent') +
+                    (battery.charging ? ', charging' : '')
               }
             />
             <div className="st-batt-meta">
-              <div className={'st-batt-state ' + (battery.charging ? 'is-charging' : 'is-onbatt')}>
+              <div
+                className={
+                  'st-batt-state ' +
+                  (battery.present === false
+                    ? 'is-charging'
+                    : battery.charging
+                      ? 'is-charging'
+                      : 'is-onbatt')
+                }
+              >
                 <Icon name="bolt" size={15} />
-                {battery.charging ? 'Charging' : 'On battery'}
+                {battery.present === false
+                  ? 'AC power'
+                  : battery.charging
+                    ? 'Charging'
+                    : 'On battery'}
               </div>
-              {temp != null && <div className="st-batt-temp muted">{temp.toFixed(1)}°C</div>}
+              {battery.present === false ? (
+                <div className="st-batt-temp muted">no battery in this device</div>
+              ) : (
+                temp != null && <div className="st-batt-temp muted">{temp.toFixed(1)}°C</div>
+              )}
             </div>
           </div>
         </section>
@@ -382,15 +395,13 @@ export default function StatusPanel() {
 
         <section className="st-card glass" aria-label="Device">
           <CardHead icon="cpu" label="Device" />
-          <div className="st-big">
-            {device.termux ? 'Server' : 'Demo mode' + (device.platform ? ' · ' + device.platform : '')}
-          </div>
+          <div className="st-big">{device.termux ? 'Phone · Termux' : 'This computer'}</div>
           <div className="st-kvs">
             <div className="st-kv">
               <span className="muted">Uptime</span>
               <span>{humanizeUptime(status.uptimeSec)}</span>
             </div>
-            {device.termux && device.platform && (
+            {device.platform && (
               <div className="st-kv">
                 <span className="muted">Platform</span>
                 <span>{device.platform}</span>
@@ -403,22 +414,43 @@ export default function StatusPanel() {
               </div>
             )}
           </div>
-          {device.termux && (
-            <div className="st-chips">
-              <span className="chip chip-ok">Termux detected</span>
-            </div>
-          )}
         </section>
 
         <section className="st-card glass" aria-label="Access">
-          <CardHead icon={tunnel.mode === 'lan' ? 'wifi' : 'shield'} label="Access" />
-          <div className="st-big">{TUNNEL_LABELS[tunnel.mode] || tunnel.mode || 'Unknown'}</div>
-          {tunnel.hint && <div className="st-hint muted">{tunnel.hint}</div>}
-          <div className="st-chips">
-            {tunnel.mode === 'lan' && <span className="chip">Direct LAN</span>}
-            {tunnel.mode === 'tailscale' && <span className="chip chip-ok">Private mesh</span>}
-            {tunnel.mode === 'cloudflared' && <span className="chip chip-ok">Secure tunnel</span>}
-          </div>
+          <CardHead icon="wifi" label="Access" />
+          {status.tailscale && status.tailscale.installed ? (
+            status.tailscale.running ? (
+              <>
+                <div className="st-big">Tailscale</div>
+                <div className="st-hint muted">
+                  {status.tailscale.dnsName || 'Private mesh network — reach this server from any device on your tailnet.'}
+                </div>
+                <div className="st-chips">
+                  {status.tailscale.ip && <span className="chip chip-ok">{status.tailscale.ip}</span>}
+                  {status.tailscale.dnsName && <span className="chip">{status.tailscale.dnsName}</span>}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="st-big">Tailscale installed</div>
+                <div className="st-hint muted">The Tailscale daemon is not running right now.</div>
+              </>
+            )
+          ) : (
+            <>
+              <div className="st-big">Wi-Fi network</div>
+              <div className="st-hint muted">
+                {tunnel.hint || 'Open the LAN URL below from any device on the same Wi-Fi.'}
+              </div>
+              <div className="st-chips">
+                {(device.lanUrls || []).slice(0, 2).map((u) => (
+                  <span key={u} className="chip">
+                    {u}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
         </section>
 
         {lock && (

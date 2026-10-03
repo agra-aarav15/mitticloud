@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import StatusPanel from './panels/StatusPanel.jsx'
 import PhotosPanel from './panels/PhotosPanel.jsx'
 import FilesPanel from './panels/FilesPanel.jsx'
-import SandboxPanel from './panels/SandboxPanel.jsx'
 import TasksPanel from './panels/TasksPanel.jsx'
 import HostPanel from './panels/HostPanel.jsx'
 import AgentPanel from './panels/AgentPanel.jsx'
@@ -15,7 +14,6 @@ const TABS = [
   { id: 'status', label: 'Status', icon: 'gauge' },
   { id: 'photos', label: 'Photos', icon: 'image' },
   { id: 'files', label: 'Files', icon: 'folder' },
-  { id: 'sandbox', label: 'Sandbox', icon: 'cpu' },
   { id: 'tasks', label: 'Tasks', icon: 'bolt' },
   { id: 'host', label: 'Host', icon: 'globe' },
   { id: 'agent', label: 'Agent', icon: 'bot' },
@@ -74,7 +72,7 @@ export default function App() {
               <div className="tagline">Your drawer-phone is a cloud now.</div>
             </div>
           </div>
-          <span className="chip chip-grad">v0.7.0</span>
+          <span className="chip chip-grad">v0.8.0</span>
         </header>
 
         <nav className="tabbar glass" role="tablist" aria-label="Sections">
@@ -93,11 +91,10 @@ export default function App() {
         </nav>
 
         <main className="main" role="tabpanel">
-          {tab === 'status' && <StatusPanel />}
-          {tab === 'photos' && <PhotosPanel />}
-          {tab === 'files' && <FilesPanel />}
-          {tab === 'sandbox' && <SandboxPanel />}
-          {tab === 'tasks' && <TasksPanel />}
+        {tab === 'status' && <StatusPanel />}
+        {tab === 'photos' && <PhotosPanel />}
+        {tab === 'files' && <FilesPanel />}
+        {tab === 'tasks' && <TasksPanel />}
           {tab === 'host' && <HostPanel />}
           {tab === 'agent' && <AgentPanel />}
           {tab === 'bridge' && <BridgePanel />}

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
 import { toast, humanizeBytes, timeAgo } from '../api.js'
+import GoLive from './GoLive.jsx'
 import './HostPanel.css'
 
 // MittiHost — host a static website from this phone, free.
@@ -471,6 +472,8 @@ export default function HostPanel() {
           })
         )}
       </section>
+
+      <GoLive sites={sites === null ? [] : sites} />
     </div>
   )
 }

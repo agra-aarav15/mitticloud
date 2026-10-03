@@ -1,307 +1,391 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { timeAgo, toast } from '../api.js'
+import { toast } from '../api.js'
+import {
+  fetchAgentProviders,
+  fetchAgentSessions,
+  fetchAgentSession,
+  createAgentSession,
+  sendAgentMessage,
+  deleteAgentSession,
+  fetchAgentWorkspaces,
+  saveAgentKey,
+  fetchHostLan
+} from '../api.js'
 import './AgentPanel.css'
 
-const POLL_MS = 30000
-const MIN_SCHEDULE = 5
-const MAX_SCHEDULE = 1440
-
-// api.js cannot carry these yet (do-not-modify), so the panel owns its calls.
-async function j(res) {
-  const d = await res.json().catch(() => ({}))
-  if (!res.ok) throw Object.assign(new Error(d.error || res.statusText), { status: res.status })
-  return d
+function ToolChip({ m }) {
+  const label = m.name === 'run_command' ? 'command' : m.name.replace(/_/g, ' ')
+  return (
+    <details className="toolchip">
+      <summary>
+        <span className={'toolname' + (m.ok === false ? ' failed' : '')}>{label}</span>
+        <span className="muted">{m.ok === false ? 'failed' : 'ran'}</span>
+      </summary>
+      <pre>{m.text}</pre>
+    </details>
+  )
 }
 
-const getAgent = () => fetch('/api/agent').then(j)
-
-const putAgent = (patch) =>
-  fetch('/api/agent', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch)
-  }).then(j)
-
-const runAgent = (force = false) =>
-  fetch('/api/agent/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force })
-  }).then(j)
-
-const getAgentRuns = () => fetch('/api/agent/runs').then(j).then((d) => d.runs || [])
-
-function nextRunHint(info) {
-  if (!info) return ''
-  if (!info.enabled) return 'Agent is off — flip the switch or use Run now.'
-  if (!info.hasKey) return 'Waiting for a Gemini key.'
-  if (!Number.isInteger(info.scheduleMinutes)) return 'Manual only — use Run now.'
-  return 'Runs about every ' + info.scheduleMinutes + ' min · last run ' + timeAgo(info.lastRunAt)
+function Typing() {
+  return (
+    <div className="msg agent typing" aria-label="The agent is working">
+      <span className="dot" />
+      <span className="dot" />
+      <span className="dot" />
+      <span className="typing-label">working — files and commands run for real</span>
+    </div>
+  )
 }
 
 export default function AgentPanel() {
-  const [info, setInfo] = useState(null) // null = loading
-  const [runs, setRuns] = useState([])
-  const [form, setForm] = useState({ instruction: '', scheduleMinutes: '60', key: '' })
-  const [saving, setSaving] = useState(false)
-  const [running, setRunning] = useState(false)
-  const [toggling, setToggling] = useState(false)
-  const [gate, setGate] = useState(null) // battery-mode gate from the server
-  const mountedRef = useRef(true)
-  const formInitRef = useRef(false)
+  const [providers, setProviders] = useState([])
+  const [sessions, setSessions] = useState([])
+  const [workspaces, setWorkspaces] = useState([])
+  const [lanUrls, setLanUrls] = useState([])
+  const [activeId, setActiveId] = useState(null)
+  const [active, setActive] = useState(null)
+  const [setupOpen, setSetupOpen] = useState(false)
+  const [newProvider, setNewProvider] = useState('gemini')
+  const [newModel, setNewModel] = useState('')
+  const [newEndpoint, setNewEndpoint] = useState('')
+  const [newWorkspace, setNewWorkspace] = useState('.')
+  const [keyDraft, setKeyDraft] = useState('')
+  const [text, setText] = useState('')
+  const [gate, setGate] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const threadRef = useRef(null)
 
-  const load = useCallback(async () => {
-    try {
-      const d = await getAgent()
-      if (!mountedRef.current) return
-      setInfo(d)
-      // fill the form once from the server; later polls never clobber typing
-      if (!formInitRef.current) {
-        formInitRef.current = true
-        setForm((f) => ({
-          ...f,
-          instruction: d.instruction || '',
-          scheduleMinutes: d.scheduleMinutes != null ? String(d.scheduleMinutes) : '60'
-        }))
-      }
-    } catch {
-      if (mountedRef.current) setInfo({ enabled: false, hasKey: false, instruction: '', scheduleMinutes: null, lastRunAt: null })
-    }
-  }, [])
+  const refreshProviders = useCallback(
+    () => fetchAgentProviders().then((d) => setProviders(d.providers)).catch(() => {}),
+    []
+  )
+  const refreshSessions = useCallback(
+    () => fetchAgentSessions().then(setSessions).catch(() => {}),
+    []
+  )
 
-  const loadRuns = useCallback(async () => {
-    try {
-      const list = await getAgentRuns()
-      if (mountedRef.current) setRuns(list)
-    } catch {
-      // keep whatever we had — history is non-critical
-    }
+  const loadActive = useCallback((id) => {
+    if (!id) return
+    fetchAgentSession(id).then(setActive).catch(() => {})
   }, [])
 
   useEffect(() => {
-    mountedRef.current = true
-    load()
-    loadRuns()
-    const timer = setInterval(() => {
-      load()
-      loadRuns()
-    }, POLL_MS)
-    return () => {
-      mountedRef.current = false
-      clearInterval(timer)
-    }
-  }, [load, loadRuns])
+    refreshProviders()
+    refreshSessions()
+    fetchAgentWorkspaces().then(setWorkspaces).catch(() => {})
+    fetchHostLan().then((d) => setLanUrls(d.urls || [])).catch(() => {})
+  }, [refreshProviders, refreshSessions])
 
-  const toggleEnabled = async () => {
-    if (!info || toggling) return
-    setToggling(true)
-    try {
-      const d = await putAgent({ enabled: !info.enabled })
-      if (mountedRef.current) setInfo((cur) => (cur ? { ...cur, ...d } : d))
-      toast(d.enabled ? 'Agent enabled' : 'Agent disabled', 'ok')
-    } catch (err) {
-      toast(err.message || 'Could not update the agent', 'err')
-    } finally {
-      if (mountedRef.current) setToggling(false)
-    }
-  }
+  // poll while the agent is working so every tool step appears live
+  const running = active && active.running
+  useEffect(() => {
+    if (!activeId || !running) return
+    const t = setInterval(() => {
+      loadActive(activeId)
+      refreshSessions()
+    }, 1400)
+    return () => clearInterval(t)
+  }, [activeId, running, loadActive, refreshSessions])
 
-  const save = async (e) => {
-    e.preventDefault()
-    const instruction = form.instruction.trim()
-    if (!instruction) {
-      toast('Write a standing instruction first', 'info')
-      return
-    }
-    const n = Number(form.scheduleMinutes)
-    if (!Number.isInteger(n) || n < MIN_SCHEDULE || n > MAX_SCHEDULE) {
-      toast('Schedule must be ' + MIN_SCHEDULE + '–' + MAX_SCHEDULE + ' minutes', 'err')
-      return
-    }
-    const patch = { instruction, scheduleMinutes: n }
-    if (form.key.trim() !== '') patch.key = form.key.trim()
-    setSaving(true)
-    try {
-      const d = await putAgent(patch)
-      if (mountedRef.current) setInfo((cur) => (cur ? { ...cur, ...d } : d))
-      setForm((f) => ({ ...f, key: '' }))
-      toast('Agent settings saved', 'ok')
-    } catch (err) {
-      toast(err.message || 'Could not save the settings', 'err')
-    } finally {
-      if (mountedRef.current) setSaving(false)
-    }
-  }
+  useEffect(() => {
+    const el = threadRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [active && active.messages.length, running])
 
-  // Same interaction as the Sandbox battery gate: batteryMode -> banner with
-  // "Run anyway" -> re-post with force:true.
-  const run = async (force = false) => {
-    if (running) return
-    setRunning(true)
+  const providerById = (id) => providers.find((p) => p.id === id)
+
+  function openSession(id) {
+    setActiveId(id)
+    setSetupOpen(false)
     setGate(null)
+    loadActive(id)
+  }
+
+  async function createSession() {
+    setBusy(true)
     try {
-      const d = await runAgent(force)
-      if (d && d.batteryMode) {
-        if (mountedRef.current) setGate(d)
-        return
-      }
-      if (d && d.needsKey) {
-        toast('Add a Gemini key first — free at aistudio.google.com', 'err')
-        return
-      }
-      if (d && d.ok) {
-        toast('Agent finished · ' + (d.toolCalls || 0) + ' tool call(s) · ' + d.ms + ' ms', 'ok')
-      } else {
-        toast('Agent run failed — ' + ((d && d.error) || 'see run history'), 'err')
-      }
+      const s = await createAgentSession({
+        providerId: newProvider,
+        model: newModel.trim() || undefined,
+        endpoint: newEndpoint.trim() || undefined,
+        workspace: newWorkspace
+      })
+      setSetupOpen(false)
+      setNewModel('')
+      setNewEndpoint('')
+      setKeyDraft('')
+      setActiveId(s.id)
+      setActive(s)
+      refreshSessions()
     } catch (err) {
-      toast(err.message || 'Could not run the agent', 'err')
+      toast(err.message, 'err')
     } finally {
-      if (mountedRef.current) {
-        setRunning(false)
-        load()
-        loadRuns()
-      }
+      setBusy(false)
     }
   }
 
-  const enabled = Boolean(info && info.enabled)
-  const hasKey = Boolean(info && info.hasKey)
+  async function saveKey() {
+    setBusy(true)
+    try {
+      await saveAgentKey(newProvider, keyDraft)
+      toast('Key saved on this device — it never leaves the server', 'ok')
+      setKeyDraft('')
+      refreshProviders()
+    } catch (err) {
+      toast(err.message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function send(force = false) {
+    const t = text.trim()
+    if (!t || !activeId) return
+    setBusy(true)
+    try {
+      const out = await sendAgentMessage(activeId, t, force)
+      if (out.batteryMode) {
+        setGate(out)
+      } else {
+        setGate(null)
+        setText('')
+        loadActive(activeId)
+        refreshSessions()
+      }
+    } catch (err) {
+      toast(err.message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeSession(id) {
+    try {
+      await deleteAgentSession(id)
+      if (id === activeId) {
+        setActiveId(null)
+        setActive(null)
+      }
+      refreshSessions()
+    } catch (err) {
+      toast(err.message, 'err')
+    }
+  }
+
+  const sel = providerById(newProvider)
+  const showSetup = setupOpen || !activeId
+  const messages = (active && active.messages) || []
 
   return (
-    <div className="ag-panel">
-      <div className="ag-toolbar">
-        <div>
-          <div className="ag-title">MittiAgent</div>
-          <div className="ag-subtitle muted">A background helper that works on a schedule — battery-aware</div>
+    <div className="agent">
+      <aside className="agent-side glass">
+        <button
+          className="btn btn-primary ag-new"
+          onClick={() => {
+            setSetupOpen(true)
+            setActiveId(null)
+            setActive(null)
+          }}
+        >
+          <Icon name="plus" size={16} /> New session
+        </button>
+        <div className="ag-label">Sessions</div>
+        <div className="ag-list">
+          {sessions.length === 0 && <div className="ag-none muted">No sessions yet</div>}
+          {sessions.map((s) => (
+            <button
+              key={s.id}
+              className={'ag-item' + (s.id === activeId ? ' active' : '')}
+              onClick={() => openSession(s.id)}
+            >
+              <span className="ag-title">{s.title}</span>
+              <span className="ag-meta">
+                {s.providerId}
+                {s.running ? ' · working' : ''}
+              </span>
+              <button
+                className="ag-del"
+                aria-label="Delete session"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  removeSession(s.id)
+                }}
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            </button>
+          ))}
         </div>
-        <div className="ag-toolbar-actions">
-          <button className="btn ag-run" onClick={() => run()} disabled={running || toggling}>
-            <Icon name="bolt" size={14} />
-            {running ? 'Running…' : 'Run now'}
-          </button>
-          <button
-            className={'ag-switch' + (enabled ? ' on' : '')}
-            role="switch"
-            aria-checked={enabled}
-            aria-label={enabled ? 'Disable MittiAgent' : 'Enable MittiAgent'}
-            onClick={toggleEnabled}
-            disabled={toggling || !info}
-          >
-            <span className="ag-knob" aria-hidden="true" />
-          </button>
+        <div className="ag-247">
+          <Icon name="bot" size={14} />
+          <span>
+            Runs 24/7 on this device. Open it from any browser:
+            {lanUrls[0] ? <code>{lanUrls[0]}</code> : <code>http://&lt;lan-ip&gt;:7333</code>}
+          </span>
         </div>
-      </div>
+      </aside>
 
-      {gate && (
-        <div className="banner ag-banner" role="status">
-          <Icon name="alert" size={15} />
-          <span className="ag-banner-msg">{gate.message}</span>
-          <button className="btn ag-banner-btn" onClick={() => run(true)}>
-            Run anyway
-          </button>
-          <button
-            className="btn iconbtn"
-            onClick={() => setGate(null)}
-            aria-label="Dismiss warning"
-            title="Dismiss"
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
-
-      <section className="ag-status glass">
-        <span className={'chip' + (enabled ? ' chip-ok' : '')}>{enabled ? 'Enabled' : 'Off'}</span>
-        <span className={'chip' + (hasKey ? ' chip-ok' : '')}>
-          Gemini key: {hasKey ? 'set' : 'missing'}
-        </span>
-        <span className="ag-nextrun muted">{nextRunHint(info)}</span>
-      </section>
-      {info && !hasKey && (
-        <div className="ag-keyhint muted">Add a free key from aistudio.google.com in the key field below.</div>
-      )}
-
-      <form className="ag-form glass" onSubmit={save}>
-        <label className="ag-label muted" htmlFor="ag-instruction">
-          Standing instruction
-        </label>
-        <textarea
-          id="ag-instruction"
-          className="ag-instruction"
-          value={form.instruction}
-          onChange={(e) => setForm((f) => ({ ...f, instruction: e.target.value }))}
-          placeholder="Every morning check the workspace and write a note about what changed"
-          aria-label="Standing instruction"
-          maxLength={4000}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoComplete="off"
-          autoCorrect="off"
-          disabled={saving}
-        />
-        <div className="ag-form-foot">
-          <div className="ag-fields">
-            <label className="ag-every">
-              <span className="muted">Every</span>
-              <input
-                className="ag-input ag-input-num"
-                type="number"
-                min={MIN_SCHEDULE}
-                max={MAX_SCHEDULE}
-                value={form.scheduleMinutes}
-                onChange={(e) => setForm((f) => ({ ...f, scheduleMinutes: e.target.value }))}
-                aria-label="Schedule in minutes"
-                disabled={saving}
-              />
-              <span className="muted">min</span>
-            </label>
-            <input
-              className="ag-input ag-key"
-              type="password"
-              value={form.key}
-              onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
-              placeholder={hasKey ? 'Key is set — type to replace' : 'Gemini API key'}
-              aria-label="Gemini API key"
-              autoComplete="off"
-              disabled={saving}
-            />
+      <section className="agent-main glass">
+        {showSetup ? (
+          <div className="ag-setup">
+            <h2>Start an agent session</h2>
+            <p className="muted">
+              Pick a brain (paste its free API key — stored only on this device) and a
+              workspace folder. The agent reads, writes and runs real commands inside that
+              folder.
+            </p>
+            <div className="ag-provs">
+              {providers.map((p) => (
+                <button
+                  key={p.id}
+                  className={'ag-prov' + (newProvider === p.id ? ' active' : '')}
+                  onClick={() => setNewProvider(p.id)}
+                >
+                  <span className="ag-prov-name">{p.label}</span>
+                  <span className="ag-prov-key">{p.hasKey ? 'key saved' : 'needs key'}</span>
+                </button>
+              ))}
+            </div>
+            {sel && (
+              <div className="ag-free muted">
+                {sel.freeNote}
+                {sel.keyUrl && (
+                  <>
+                    {' '}
+                    <a href={sel.keyUrl} target="_blank" rel="noreferrer">
+                      get a key
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
+            {sel && (
+              <div className="ag-keyrow">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={
+                    sel.hasKey
+                      ? 'A key is saved — paste a new one to replace it'
+                      : 'Paste your ' + sel.label + ' API key'
+                  }
+                  value={keyDraft}
+                  onChange={(e) => setKeyDraft(e.target.value)}
+                />
+                <button className="btn" disabled={busy || !keyDraft.trim()} onClick={saveKey}>
+                  {sel.hasKey ? 'Replace key' : 'Save key'}
+                </button>
+              </div>
+            )}
+            {sel && sel.id === 'custom' && (
+              <div className="ag-keyrow">
+                <input
+                  placeholder="Base URL, e.g. http://127.0.0.1:8080/v1"
+                  value={newEndpoint}
+                  onChange={(e) => setNewEndpoint(e.target.value)}
+                />
+                <input
+                  placeholder="Model name"
+                  value={newModel}
+                  onChange={(e) => setNewModel(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="ag-keyrow">
+              <select value={newWorkspace} onChange={(e) => setNewWorkspace(e.target.value)}>
+                {workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    Workspace: {w.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button className="btn btn-primary" disabled={busy} onClick={createSession}>
+              Start session
+            </button>
           </div>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </form>
-
-      <section className="ag-history glass">
-        <div className="ag-hist-head">
-          <span className="ag-overline">Run history</span>
-          <span className="muted ag-hist-count">{runs.length}</span>
-        </div>
-        {info === null ? (
-          <div className="ag-hist-loading muted">Loading…</div>
-        ) : runs.length === 0 ? (
-          <div className="ag-hist-empty muted">No runs yet — press Run now or wait for the schedule.</div>
         ) : (
-          <ul className="ag-runs">
-            {runs.map((r, i) => (
-              <li key={i} className="ag-run">
-                <div className="ag-run-head">
-                  {r.deferred ? (
-                    <span className="chip">deferred</span>
-                  ) : (
-                    <span className={'chip' + (r.ok ? ' chip-ok' : '')}>{r.ok ? 'ok' : 'fail'}</span>
-                  )}
-                  <span className="muted">{timeAgo(r.at)}</span>
-                  <span className="muted">{r.toolCalls || 0} tool call(s)</span>
-                  <span className="muted">{r.ms} ms</span>
+          <>
+            <header className="ag-head">
+              <div>
+                <div className="ag-head-title">{active ? active.title : 'Session'}</div>
+                <div className="ag-head-meta muted">
+                  {active && active.providerId}
+                  {active && active.model ? ' · ' + active.model : ''} · workspace:{' '}
+                  {active && active.workspace === '.' ? 'vault root' : active && active.workspace}
                 </div>
-                {r.say ? <p className="ag-say">{r.say}</p> : null}
-                {r.error ? <pre className="ag-err">{r.error}</pre> : null}
-              </li>
-            ))}
-          </ul>
+              </div>
+            </header>
+
+            {gate && (
+              <div className="banner ag-gate">
+                <Icon name="alert" size={16} />
+                <span>{gate.message}</span>
+                <button className="btn" onClick={() => send(true)}>
+                  Run anyway
+                </button>
+                <button className="iconbtn" aria-label="Dismiss" onClick={() => setGate(null)}>
+                  <Icon name="x" size={14} />
+                </button>
+              </div>
+            )}
+
+            <div className="thread" ref={threadRef}>
+              {messages.length === 0 && (
+                <div className="empty">
+                  <div className="iconbtn">
+                    <Icon name="bot" size={22} />
+                  </div>
+                  Give the agent a job. It can list and edit files in the workspace and run
+                  real commands — builds, scripts, git, anything a terminal can do.
+                </div>
+              )}
+              {messages.map((m, i) => {
+                if (m.role === 'user')
+                  return (
+                    <div key={i} className="msg user">
+                      {m.text}
+                    </div>
+                  )
+                if (m.role === 'tool') return <ToolChip key={i} m={m} />
+                return (
+                  <div key={i} className={'msg agent' + (m.error ? ' err' : '')}>
+                    {m.text}
+                  </div>
+                )
+              })}
+              {running && <Typing />}
+            </div>
+
+            <div className="composer">
+              <textarea
+                rows={1}
+                placeholder={
+                  active && active.running
+                    ? 'The agent is working…'
+                    : 'Tell the agent what to do'
+                }
+                value={text}
+                disabled={busy || (active && active.running)}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    send()
+                  }
+                }}
+              />
+              <button
+                className="btn btn-primary"
+                disabled={busy || !text.trim() || (active && active.running)}
+                onClick={() => send()}
+                aria-label="Send"
+              >
+                <Icon name="arrowRight" size={16} />
+              </button>
+            </div>
+          </>
         )}
       </section>
     </div>

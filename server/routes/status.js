@@ -32,12 +32,34 @@ function hasTailscaleIP() {
   return getLanIPs().some(({ address }) => address.startsWith('100.'));
 }
 
-// Same rule as index.js for the port, so these URLs match the banner.
-const PORT = Number.parseInt(process.env.PORT || '', 10) || 7333;
-
-/** Reachable LAN URLs, e.g. ["http://192.168.1.20:7333"]. */
-function lanUrls() {
-  return getLanIPs().map(({ address }) => `http://${address}:${PORT}`);
+/**
+ * REAL tailscale readout from `tailscale status --json` — or installed:false
+ * when the machine has none. No invented values: every field comes from the
+ * binary's own output.
+ */
+async function tailscaleInfo() {
+  try {
+    const { stdout } = await execFileP('tailscale', ['status', '--json'], {
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    });
+    const j = JSON.parse(stdout);
+    const self = j.Self || {};
+    const ip = Array.isArray(self.TailscaleIPs) ? self.TailscaleIPs[0] || null : null;
+    const dnsName =
+      typeof self.DNSName === 'string' ? self.DNSName.replace(/\.$/, '') : null;
+    return {
+      installed: true,
+      running: j.BackendState === 'Running',
+      online: self.Online === true,
+      ip,
+      dnsName,
+    };
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return { installed: false };
+    // installed but not answering (daemon off, permissions) — say exactly that
+    return { installed: true, running: false, online: false, ip: null, dnsName: null };
+  }
 }
 
 async function detectTunnel() {
@@ -48,6 +70,14 @@ async function detectTunnel() {
     return 'cloudflared';
   }
   return 'lan';
+}
+
+// Same rule as index.js for the port, so these URLs match the banner.
+const PORT = Number.parseInt(process.env.PORT || '', 10) || 7333;
+
+/** Reachable LAN URLs, e.g. ["http://192.168.1.20:7333"]. */
+function lanUrls() {
+  return getLanIPs().map(({ address }) => `http://${address}:${PORT}`);
 }
 
 function tunnelHint(mode) {
@@ -64,11 +94,12 @@ function tunnelHint(mode) {
 
 router.get('/', async (req, res, next) => {
   try {
-    const [termux, battery, storage, mode] = await Promise.all([
+    const [termux, battery, storage, mode, tailscale] = await Promise.all([
       isTermux(),
       getBattery(),
       getStorage(VAULT_DIR),
       detectTunnel(),
+      tailscaleInfo(),
     ]);
     res.json({
       battery,
@@ -77,6 +108,7 @@ router.get('/', async (req, res, next) => {
       version: PKG.version,
       device: { termux, platform: process.platform, lanUrls: lanUrls() },
       security: { locked: isLocked() },
+      tailscale,
       tunnel: { mode, hint: tunnelHint(mode) },
     });
   } catch (err) {

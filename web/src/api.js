@@ -1,5 +1,18 @@
 // Shared API client + helpers. Panels import from here — do not duplicate.
 
+// The lock token (set via Status → Security or the Host panel) rides on every
+// write so the owner never gets locked out of his own server. Reads stay open.
+const TOKEN_KEY = 'mitti_token'
+function tokenHeaders(extra = {}) {
+  let t = ''
+  try {
+    t = sessionStorage.getItem(TOKEN_KEY) || ''
+  } catch {
+    /* private mode */
+  }
+  return t ? { ...extra, 'x-mitti-token': t } : extra
+}
+
 async function j(res) {
   const d = await res.json().catch(() => ({}))
   if (!res.ok) throw Object.assign(new Error(d.error || res.statusText), { status: res.status })
@@ -35,38 +48,89 @@ export const deleteFile = (path, force = false) =>
 
 export const downloadUrl = (path) => '/api/files/download?path=' + encodeURIComponent(path)
 
-export const runSandbox = (language, code, confirm = false) =>
-  fetch('/api/sandbox/run', {
+// --- Agent Server (24/7 multi-provider agent) ---
+
+export const fetchAgentProviders = () => fetch('/api/agent/providers').then(j)
+export const saveAgentKey = (providerId, key) =>
+  fetch('/api/agent/keys', {
+    method: 'PUT',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ providerId, key })
+  }).then(j)
+export const fetchAgentWorkspaces = () =>
+  fetch('/api/agent/workspaces').then(j).then((d) => d.workspaces || [])
+export const fetchAgentSessions = () =>
+  fetch('/api/agent/sessions').then(j).then((d) => d.sessions || [])
+export const createAgentSession = (payload) =>
+  fetch('/api/agent/sessions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ language, code, confirm })
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload)
+  }).then(j)
+export const fetchAgentSession = (id) =>
+  fetch('/api/agent/sessions/' + encodeURIComponent(id)).then(j)
+export const sendAgentMessage = (id, text, force = false) =>
+  fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/messages', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ text, force })
+  }).then(j)
+export const deleteAgentSession = (id) =>
+  fetch('/api/agent/sessions/' + encodeURIComponent(id), {
+    method: 'DELETE',
+    headers: tokenHeaders()
   }).then(j)
 
-// --- MittiOps (scheduled jobs & webhooks) ---
+// --- MittiHost runtime (LAN test + Cloudflare tunnel + load test) ---
+
+export const fetchHostLan = () => fetch('/api/host/lan').then(j)
+export const fetchTunnel = () => fetch('/api/host/tunnel').then(j)
+export const startQuickTunnel = (bin) =>
+  fetch('/api/host/tunnel/quick', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ bin })
+  }).then(j)
+export const startTokenTunnel = (token, bin) =>
+  fetch('/api/host/tunnel/token', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ token, bin })
+  }).then(j)
+export const stopTunnel = () =>
+  fetch('/api/host/tunnel/stop', { method: 'POST', headers: tokenHeaders() }).then(j)
+export const runLoadTest = (payload) =>
+  fetch('/api/host/loadtest', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload)
+  }).then(j)
+
+// --- Tasks (little jobs) ---
 
 export const fetchTasks = () => fetch('/api/tasks').then(j).then((d) => d.tasks || [])
 
 export const createTask = (payload) =>
   fetch('/api/tasks', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload)
   }).then(j)
 
 export const updateTask = (id, patch) =>
   fetch('/api/tasks/' + encodeURIComponent(id), {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(patch)
   }).then(j)
 
 export const deleteTask = (id) =>
-  fetch('/api/tasks/' + encodeURIComponent(id), { method: 'DELETE' }).then(j)
+  fetch('/api/tasks/' + encodeURIComponent(id), { method: 'DELETE', headers: tokenHeaders() }).then(j)
 
 export const runTask = (id, force = false) =>
   fetch('/api/tasks/' + encodeURIComponent(id) + '/run', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ force })
   }).then(j)
 

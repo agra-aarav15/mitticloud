@@ -213,3 +213,167 @@
 .hs-sk-line {
   height: 14px;
 }
+
+/* --- GoLive: the cfn flow (LAN test -> Cloudflare -> prove it) --- */
+.golive {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.golive-site {
+  align-self: flex-start;
+  min-width: 200px;
+}
+.golive-note {
+  margin: 0;
+  font-size: 13.5px;
+}
+.golive-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+.golive-step {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.golive-step-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.golive-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #0a0a0a;
+  font-weight: 800;
+  font-size: 12.5px;
+  display: grid;
+  place-items: center;
+}
+.golive-title {
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.golive-step p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.golive-url {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e5e5e5;
+  border-radius: 10px;
+  padding: 8px 11px;
+  font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.golive-url:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.golive-url.live {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+}
+.golive-url span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.golive-btnrow {
+  display: flex;
+  gap: 8px;
+}
+.golive-btnrow input {
+  flex: 1;
+  min-width: 0;
+}
+.golive-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.golive-status .btn {
+  align-self: flex-start;
+}
+.golive-live-chip {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #fafafa;
+}
+.golive-err {
+  font-size: 12.5px;
+  margin: 0;
+}
+.golive-help summary {
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.golive-help p {
+  margin: 8px 0;
+}
+.golive-help input {
+  width: 100%;
+}
+.golive-load {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* shared input style for golive + setup rows */
+.golive input,
+.ag-keyrow input,
+.ag-keyrow select,
+.golive-site,
+.golive-help input {
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+.golive input:focus,
+.ag-keyrow input:focus,
+.ag-keyrow select:focus,
+.golive-site:focus,
+.golive-help input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.golive input::placeholder,
+.golive-help input::placeholder,
+.ag-keyrow input::placeholder {
+  color: rgba(163, 163, 163, 0.65);
+}
+.golive select option,
+.golive-site option {
+  background: #141414;
+  color: #fafafa;
+}

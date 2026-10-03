@@ -13,7 +13,7 @@ import healthRouter from './routes/health.js';
 import statusRouter from './routes/status.js';
 import photosRouter from './routes/photos.js';
 import filesRouter from './routes/files.js';
-import sandboxRouter from './routes/sandbox.js';
+import hostRouter from './routes/host.js';
 import lockRouter from './routes/lock.js';
 import { initTasks } from './routes/tasks.js';
 import { initSites } from './routes/sites.js';
@@ -66,7 +66,7 @@ app.use('/api/status', statusRouter);
 app.use('/api', lockRouter); // router paths: GET /lock-status, PUT /lock
 app.use('/api/photos', photosRouter);
 app.use('/api/files', filesRouter);
-app.use('/api/sandbox', sandboxRouter);
+app.use('/api/host', hostRouter); // LAN URLs + Cloudflare tunnel + load test
 
 // --- backup: one-shot settings snapshot (lock-protected via the guard above)
 app.post('/api/backup/run', (req, res, next) => {
@@ -120,7 +120,7 @@ const IS_MAIN =
 
 if (IS_MAIN) {
   const server = app.listen(PORT, () => {
-    console.log(`MittiCloud v0.7.0 running at http://localhost:${PORT}`);
+    console.log(`MittiCloud v0.8.0 running at http://localhost:${PORT}`);
     for (const { iface, address } of getLanIPs()) {
       console.log(`  also on http://${address}:${PORT} (${iface})`);
     }

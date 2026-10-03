@@ -12,6 +12,8 @@ const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 const KEEP_FOLDERS = 7;
 const INTERVAL_MS = 6 * 60 * 60 * 1000; // 4 runs a day
 const DATE_DIR_RE = /^\d{4}-\d{2}-\d{2}$/;
+// API keys live on the device and never get copied into backups.
+const SKIP_FILES = new Set(['agent-keys.json']);
 
 /** Copy every data/*.json into data/backups/<YYYY-MM-DD>/ (best effort). */
 export function runBackupNow() {
@@ -20,6 +22,7 @@ export function runBackupNow() {
   fs.mkdirSync(folder, { recursive: true });
   for (const ent of fs.readdirSync(DATA_DIR, { withFileTypes: true })) {
     if (!ent.isFile() || !ent.name.endsWith('.json')) continue;
+    if (SKIP_FILES.has(ent.name)) continue;
     fs.copyFileSync(path.join(DATA_DIR, ent.name), path.join(folder, ent.name));
   }
   pruneOldFolders();

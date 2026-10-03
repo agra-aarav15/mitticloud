@@ -38,33 +38,76 @@ export function isTermux() {
 }
 
 /**
+ * Real battery read on Windows via WMI. Resolves { present:false } on a
+ * desktop without a battery (it runs on AC — that is the truth, there is
+ * nothing to invent). Throws when PowerShell fails outright.
+ */
+async function getWindowsBattery() {
+  const { stdout } = await execFileP(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      '$b = Get-CimInstance -ClassName Win32_Battery | Select-Object -First 1; ' +
+        'if ($b -and $b.EstimatedChargeRemaining -ne $null) { ' +
+        '"{\\"level\\":" + [int]$b.EstimatedChargeRemaining + ' +
+        '",\\"charging\\":" + ($b.BatteryStatus -eq 2).ToString().ToLower() + "}" ' +
+        '} else { "none" }',
+    ],
+    { timeout: 8000, maxBuffer: 1024 * 1024 }
+  );
+  const t = stdout.trim();
+  if (!t || t === 'none') return { present: false, mocked: false };
+  const o = JSON.parse(t);
+  const level = Number(o.level);
+  if (!Number.isFinite(level)) return { present: false, mocked: false };
+  return {
+    level,
+    charging: o.charging === true,
+    temperature: null,
+    mocked: false,
+    present: true,
+  };
+}
+
+/**
  * Battery status. On Termux: parse termux-battery-status JSON.
- * Elsewhere (or on failure): { level: 87, charging: true, mocked: true }.
+ * On Windows: a real WMI read (or { present:false } on a desktop with no
+ * battery — AC power, nothing mocked). On other systems without a battery
+ * API: { present:false } too. The honest answer always wins.
  */
 export async function getBattery() {
-  if (!(await isTermux())) {
-    return { level: 87, charging: true, temperature: null, mocked: true };
+  if (await isTermux()) {
+    try {
+      const { stdout } = await execFileP('termux-battery-status', [], {
+        timeout: 5000,
+        maxBuffer: 1024 * 1024,
+      });
+      const raw = JSON.parse(stdout);
+      const level = Number(raw.percentage ?? raw.level ?? 0);
+      const charging =
+        raw.plugged === true ||
+        raw.plugged === 'true' ||
+        raw.plugged === 1 ||
+        raw.status === 'CHARGING' ||
+        raw.status === 'FULL';
+      const tempNum = Number(raw.temperature);
+      const temperature =
+        raw.temperature != null && Number.isFinite(tempNum) ? tempNum : null;
+      return { level, charging, temperature, mocked: false, present: true };
+    } catch {
+      return { present: false, mocked: false };
+    }
   }
-  try {
-    const { stdout } = await execFileP('termux-battery-status', [], {
-      timeout: 5000,
-      maxBuffer: 1024 * 1024,
-    });
-    const raw = JSON.parse(stdout);
-    const level = Number(raw.percentage ?? raw.level ?? 0);
-    const charging =
-      raw.plugged === true ||
-      raw.plugged === 'true' ||
-      raw.plugged === 1 ||
-      raw.status === 'CHARGING' ||
-      raw.status === 'FULL';
-    const tempNum = Number(raw.temperature);
-    const temperature =
-      raw.temperature != null && Number.isFinite(tempNum) ? tempNum : null;
-    return { level, charging, temperature, mocked: false };
-  } catch {
-    return { level: 87, charging: true, temperature: null, mocked: true };
+  if (process.platform === 'win32') {
+    try {
+      return await getWindowsBattery();
+    } catch {
+      return { present: false, mocked: false };
+    }
   }
+  return { present: false, mocked: false };
 }
 
 /**
