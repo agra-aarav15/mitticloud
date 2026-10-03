@@ -53,6 +53,28 @@ export const GUIDE_STEPS = [
     cta: { label: 'Open Tasks', tab: 'tasks' }
   },
   {
+    id: 'first-site',
+    title: 'First website hosted',
+    passNote: 'A site is live from this cloud at /s/<name>.',
+    pending: [
+      'MittiHost serves websites from this phone — free, no hosting bill.',
+      'Host tab: create a site, pick your HTML folder, upload.',
+      'It is reachable on your LAN or Tailscale; pair a free Cloudflare Tunnel for a public URL.'
+    ],
+    cta: { label: 'Open Host', tab: 'host' }
+  },
+  {
+    id: 'bridge',
+    title: 'Coding agent linked (Cloud Mode)',
+    passNote: 'A Cloud Mode session exists on this cloud.',
+    pending: [
+      'Cloud Mode stores your coding agent\'s context window, chat and files on this phone.',
+      'On the laptop: node scripts/mitti-bridge.mjs new <name>, then save <id> CLAUDE.md.',
+      'Resume the session from any device with resume <id> — or start a new chat anytime.'
+    ],
+    cta: { label: 'Open Cloud Mode', tab: 'bridge' }
+  },
+  {
     id: 'phone-app',
     title: 'Install on the phone',
     passNote: 'Running on the phone — nothing to install.',

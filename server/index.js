@@ -11,6 +11,9 @@ import photosRouter from './routes/photos.js';
 import filesRouter from './routes/files.js';
 import sandboxRouter from './routes/sandbox.js';
 import { initTasks } from './routes/tasks.js';
+import { initSites } from './routes/sites.js';
+import { initAgent } from './routes/agent.js';
+import bridgeRouter from './routes/bridge.js';
 import {
   DATA_DIR,
   PUBLIC_DIR,
@@ -30,6 +33,13 @@ for (const dir of [DATA_DIR, VAULT_DIR, PHOTOS_DIR, FILES_DIR]) {
 
 const app = express();
 app.disable('x-powered-by');
+
+// --- MittiHost (/s, /api/sites) + Cloud Mode (/api/bridge/sessions) mount
+//     BEFORE the global 1MB JSON parser: site and context uploads carry
+//     multi-MB bodies and both modules set their own larger limits ---
+initSites(app);
+app.use('/api/bridge/sessions', bridgeRouter);
+
 app.use(express.json({ limit: '1mb' }));
 
 // --- API ---
@@ -42,6 +52,9 @@ app.use('/api/sandbox', sandboxRouter);
 // --- MittiOps: /api/tasks CRUD + scheduler, POST /hook/<webhookId> triggers ---
 // (must mount before the 404 catch-alls below)
 initTasks(app);
+
+// --- MittiAgent: /api/agent + 60s scheduler (mounts its own router) ---
+initAgent(app);
 
 // --- static: photo vault ---
 app.use('/photos', express.static(PHOTOS_DIR, { maxAge: '1h' }));
@@ -71,7 +84,7 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`MittiCloud v0.5.0 running at http://localhost:${PORT}`);
+  console.log(`MittiCloud v0.6.0 running at http://localhost:${PORT}`);
   for (const { iface, address } of getLanIPs()) {
     console.log(`  also on http://${address}:${PORT} (${iface})`);
   }

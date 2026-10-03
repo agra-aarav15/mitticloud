@@ -13,9 +13,11 @@ const POLL_MS = 30000
  * - lan:       always (the server is answering if you can read this)
  * - tailscale: tunnel.mode === 'tailscale'
  * - first-task: /api/tasks returns at least one task
+ * - first-site: /api/sites returns at least one hosted site
+ * - bridge:    /api/bridge/sessions returns at least one Cloud Mode session
  * - phone-app: MittiCloud is running inside Termux (device.termux)
  */
-function computePass(status, tasks) {
+function computePass(status, tasks, sites, sessions) {
   const device = (status && status.device) || {}
   const battery = (status && status.battery) || {}
   const tunnel = (status && status.tunnel) || {}
@@ -25,6 +27,8 @@ function computePass(status, tasks) {
     lan: true,
     tailscale: tunnel.mode === 'tailscale',
     'first-task': Array.isArray(tasks) && tasks.length >= 1,
+    'first-site': Array.isArray(sites) && sites.length >= 1,
+    bridge: Array.isArray(sessions) && sessions.length >= 1,
     'phone-app': device.termux === true
   }
 }
@@ -41,6 +45,8 @@ async function copyText(text, msg) {
 export default function GuidesPanel({ onGoTo }) {
   const [status, setStatus] = useState(null)
   const [tasks, setTasks] = useState(null)
+  const [sites, setSites] = useState(null)
+  const [sessions, setSessions] = useState(null)
   const [open, setOpen] = useState(() => new Set())
   const autoOpenedRef = useRef(false)
 
@@ -55,6 +61,20 @@ export default function GuidesPanel({ onGoTo }) {
     } catch {
       // tasks stay unknown; first-task stays pending
     }
+    try {
+      const r = await fetch('/api/sites')
+      const body = await r.json()
+      setSites(body.sites || [])
+    } catch {
+      // sites stay unknown; first-site stays pending
+    }
+    try {
+      const r = await fetch('/api/bridge/sessions')
+      const body = await r.json()
+      setSessions(body.sessions || [])
+    } catch {
+      // sessions stay unknown; bridge stays pending
+    }
   }, [])
 
   useEffect(() => {
@@ -63,7 +83,10 @@ export default function GuidesPanel({ onGoTo }) {
     return () => clearInterval(timer)
   }, [load])
 
-  const pass = useMemo(() => computePass(status, tasks), [status, tasks])
+  const pass = useMemo(
+    () => computePass(status, tasks, sites, sessions),
+    [status, tasks, sites, sessions]
+  )
 
   // Open the first pending step once, so the next action is visible.
   useEffect(() => {

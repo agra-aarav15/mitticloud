@@ -1,0 +1,190 @@
+/* HostPanel (MittiHost) — panel-specific styles. Shared tokens/classes live in tokens.css. */
+
+.hs-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hs-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+}
+.hs-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.hs-subtitle {
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+
+.hs-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hs-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* New site form */
+.hs-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+.hs-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hs-input {
+  flex: 1;
+  min-width: 200px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.hs-input:focus {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.hs-input:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 1px;
+}
+.hs-input::placeholder {
+  color: rgba(161, 161, 161, 0.55);
+}
+.hs-form .hs-pick {
+  min-height: 38px;
+  cursor: pointer;
+}
+/* visually hidden folder input (webkitdirectory set via ref in HostPanel.jsx) */
+.hs-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.hs-progress {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Site cards */
+.hs-card {
+  padding: 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hs-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hs-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.hs-name {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+.hs-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hs-card-actions .iconbtn {
+  width: 34px;
+  min-height: 34px;
+}
+.hs-sure {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  border-radius: 9px;
+}
+
+/* meta row: URL chip (same pattern as the MittiOps webhook chip) + created */
+.hs-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.hs-url {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.hs-url:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.04);
+}
+.hs-url:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 1px;
+}
+.hs-url-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hs-created {
+  font-variant-numeric: tabular-nums;
+}
+
+/* skeleton */
+.hs-sk-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 30px;
+}
+.hs-sk-line {
+  height: 14px;
+}
