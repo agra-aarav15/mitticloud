@@ -13,7 +13,7 @@
   min-height: 42px;
 }
 .rp-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 750;
   letter-spacing: -0.02em;
 }
@@ -188,4 +188,18 @@
   .rp-card-actions {
     align-self: flex-end;
   }
+}
+
+/* --- the embedded agent panel breathes inside its segment (no box-in-box) --- */
+.rp-body .agent {
+  grid-template-columns: 220px 1fr;
+  min-height: 520px;
+}
+.rp-body .agent > .agent-side,
+.rp-body .agent > .agent-main {
+  border: none;
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }

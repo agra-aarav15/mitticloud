@@ -265,13 +265,28 @@ export default function GoLive({ sites }) {
       <div className="hs-label muted">Take a site live</div>
       <div className="golive glass">
         {sites && sites.length > 0 ? (
-          <select className="golive-site" value={site} onChange={(e) => setSite(e.target.value)} aria-label="Site to take live">
-            {sites.map((s) => (
-              <option key={s.name} value={s.name}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <>
+            <select className="golive-site" value={site} onChange={(e) => setSite(e.target.value)} aria-label="Site to take live">
+              {sites.map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <details className="golive-help">
+              <summary className="muted">MittiBadge — prove this site runs on a phone</summary>
+              <p className="muted">
+                One line in your HTML, and visitors see a live badge: visits today, uptime, power.
+                Real numbers only, no account. Works while the site is served by this phone (LAN or
+                tunnel mode).
+              </p>
+              <div className="golive-btnrow">
+                <button className="btn" onClick={() => window.open('/badge/' + site, '_blank')}>
+                  <Icon name="star" size={14} /> Get the badge line for {site}
+                </button>
+              </div>
+            </details>
+          </>
         ) : (
           <p className="muted golive-note">Upload a site above first — then test it on your LAN and take it public.</p>
         )}

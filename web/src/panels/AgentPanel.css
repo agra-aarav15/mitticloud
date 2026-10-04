@@ -399,3 +399,45 @@
     max-width: 92%;
   }
 }
+
+/* --- CLI brains + terminal-face output --- */
+.ag-group-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-top: 6px;
+}
+.ag-install-hint {
+  flex: 1;
+  font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  align-self: center;
+}
+.ag-install-log {
+  font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.msg-cli {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-align: left;
+}
+.ag-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 13px;
+  margin-left: 2px;
+  background: #d4d4d4;
+  vertical-align: text-bottom;
+  animation: ag-blink 1s steps(1) infinite;
+}
+@keyframes ag-blink {
+  50% {
+    opacity: 0;
+  }
+}

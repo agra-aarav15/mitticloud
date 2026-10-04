@@ -151,3 +151,67 @@
 .hm-guides:hover {
   color: #fafafa;
 }
+
+/* --- command box: the one-box start --- */
+.hm-command {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  align-items: center;
+}
+.hm-input {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14.5px;
+}
+.hm-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.06);
+}
+.hm-input::placeholder {
+  color: rgba(163, 163, 163, 0.7);
+}
+.hm-go {
+  height: 46px;
+}
+
+/* --- guided steps --- */
+.hm-steps {
+  padding: 12px 14px;
+}
+.hm-step-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hm-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: #e5e5e5;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.hm-step:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+.hm-step-num {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d4d4d4;
+}

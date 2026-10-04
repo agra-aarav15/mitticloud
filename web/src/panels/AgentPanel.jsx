@@ -10,7 +10,9 @@ import {
   deleteAgentSession,
   fetchAgentWorkspaces,
   saveAgentKey,
-  fetchHostLan
+  fetchHostLan,
+  fetchCliStatus,
+  installCliPreset
 } from '../api.js'
 import './AgentPanel.css'
 
@@ -27,25 +29,33 @@ function ToolChip({ m }) {
   )
 }
 
-function Typing() {
+function Typing({ isCli }) {
   return (
     <div className="msg agent typing" aria-label="The agent is working">
       <span className="dot" />
       <span className="dot" />
       <span className="dot" />
-      <span className="typing-label">working — files and commands run for real</span>
+      <span className="typing-label">
+        {isCli ? 'the CLI agent is working — real output follows' : 'working — files and commands run for real'}
+      </span>
     </div>
   )
 }
 
 export default function AgentPanel() {
   const [providers, setProviders] = useState([])
+  const [cliPresets, setCliPresets] = useState([])
+  const [cliInstalling, setCliInstalling] = useState(null)
   const [sessions, setSessions] = useState([])
   const [workspaces, setWorkspaces] = useState([])
   const [lanUrls, setLanUrls] = useState([])
   const [activeId, setActiveId] = useState(null)
   const [active, setActive] = useState(null)
   const [setupOpen, setSetupOpen] = useState(false)
+  // brain choice: 'cli' (real agent CLI on this device) or 'brain' (API model)
+  const [engine, setEngine] = useState('cli')
+  const [selectedCli, setSelectedCli] = useState('opencode')
+  const [cliCmdDraft, setCliCmdDraft] = useState('')
   const [newProvider, setNewProvider] = useState('gemini')
   const [newModel, setNewModel] = useState('')
   const [newEndpoint, setNewEndpoint] = useState('')
@@ -64,6 +74,14 @@ export default function AgentPanel() {
     () => fetchAgentSessions().then(setSessions).catch(() => {}),
     []
   )
+  const refreshCli = useCallback(() => {
+    fetchCliStatus()
+      .then((d) => {
+        setCliPresets(d.presets || [])
+        setCliInstalling(d.installing || null)
+      })
+      .catch(() => {})
+  }, [])
 
   const loadActive = useCallback((id) => {
     if (!id) return
@@ -73,11 +91,12 @@ export default function AgentPanel() {
   useEffect(() => {
     refreshProviders()
     refreshSessions()
+    refreshCli()
     fetchAgentWorkspaces().then(setWorkspaces).catch(() => {})
     fetchHostLan().then((d) => setLanUrls(d.urls || [])).catch(() => {})
-  }, [refreshProviders, refreshSessions])
+  }, [refreshProviders, refreshSessions, refreshCli])
 
-  // poll while the agent is working so every tool step appears live
+  // poll while the agent is working so every line lands live
   const running = active && active.running
   useEffect(() => {
     if (!activeId || !running) return
@@ -88,12 +107,20 @@ export default function AgentPanel() {
     return () => clearInterval(t)
   }, [activeId, running, loadActive, refreshSessions])
 
+  // poll the installer while npm runs
+  useEffect(() => {
+    if (!cliInstalling) return
+    const t = setInterval(refreshCli, 2000)
+    return () => clearInterval(t)
+  }, [cliInstalling, refreshCli])
+
   useEffect(() => {
     const el = threadRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [active && active.messages.length, running])
 
   const providerById = (id) => providers.find((p) => p.id === id)
+  const cliById = (id) => cliPresets.find((p) => p.id === id)
 
   function openSession(id) {
     setActiveId(id)
@@ -105,13 +132,27 @@ export default function AgentPanel() {
   async function createSession() {
     setBusy(true)
     try {
-      const s = await createAgentSession({
-        providerId: newProvider,
-        model: newModel.trim() || undefined,
-        endpoint: newEndpoint.trim() || undefined,
-        workspace: newWorkspace
-      })
+      let payload
+      if (engine === 'cli') {
+        const preset = cliById(selectedCli)
+        const cmd = (cliCmdDraft.trim() || (preset && preset.cmd) || '').trim()
+        payload = {
+          engine: 'cli',
+          cliCmd: cmd,
+          cliLabel: preset ? preset.label : 'Custom CLI',
+          workspace: newWorkspace
+        }
+      } else {
+        payload = {
+          providerId: newProvider,
+          model: newModel.trim() || undefined,
+          endpoint: newEndpoint.trim() || undefined,
+          workspace: newWorkspace
+        }
+      }
+      const s = await createAgentSession(payload)
       setSetupOpen(false)
+      setCliCmdDraft('')
       setNewModel('')
       setNewEndpoint('')
       setKeyDraft('')
@@ -122,6 +163,16 @@ export default function AgentPanel() {
       toast(err.message, 'err')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function installCli() {
+    try {
+      await installCliPreset(selectedCli)
+      toast('Installing — this can take a minute or two', 'info')
+      refreshCli()
+    } catch (err) {
+      toast(err.message, 'err')
     }
   }
 
@@ -174,8 +225,10 @@ export default function AgentPanel() {
   }
 
   const sel = providerById(newProvider)
+  const cli = cliById(selectedCli)
   const showSetup = setupOpen || !activeId
   const messages = (active && active.messages) || []
+  const isCliSession = active && active.engine === 'cli'
 
   return (
     <div className="agent">
@@ -201,7 +254,7 @@ export default function AgentPanel() {
             >
               <span className="ag-title">{s.title}</span>
               <span className="ag-meta">
-                {s.providerId}
+                {s.engine === 'cli' ? (s.cliLabel || 'CLI') + ' · CLI' : s.providerId}
                 {s.running ? ' · working' : ''}
               </span>
               <button
@@ -231,67 +284,111 @@ export default function AgentPanel() {
           <div className="ag-setup">
             <h2>Start an agent session</h2>
             <p className="muted">
-              Pick a brain (paste its free API key — stored only on this device) and a
-              workspace folder. The agent reads, writes and runs real commands inside that
-              folder.
+              A real agent runs on this device and works inside the folder you pick — reading,
+              writing and running commands while you watch every line.
             </p>
+
+            <div className="ag-group-label muted">CLI brains — real agents, running here</div>
+            <div className="ag-provs">
+              {cliPresets.map((p) => (
+                <button
+                  key={p.id}
+                  className={'ag-prov' + (engine === 'cli' && selectedCli === p.id ? ' active' : '')}
+                  onClick={() => {
+                    setEngine('cli')
+                    setSelectedCli(p.id)
+                    setCliCmdDraft('')
+                  }}
+                >
+                  <span className="ag-prov-name">{p.label}</span>
+                  <span className="ag-prov-key">
+                    {p.id === 'custom'
+                      ? 'your command'
+                      : p.installed
+                        ? 'installed'
+                        : 'not installed'}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {engine === 'cli' && cli && (
+              <>
+                <div className="ag-free muted">{cli.note}</div>
+                {cli.id !== 'custom' && !cli.installed && (
+                  <div className="ag-keyrow">
+                    <span className="muted ag-install-hint">{cli.install}</span>
+                    <button
+                      className="btn"
+                      disabled={busy || Boolean(cliInstalling)}
+                      onClick={installCli}
+                    >
+                      {cliInstalling ? 'Installing…' : 'Install on this device'}
+                    </button>
+                  </div>
+                )}
+                {cliInstalling && cliInstalling.logTail && cliInstalling.logTail.length > 0 && (
+                  <div className="muted ag-install-log">
+                    {cliInstalling.logTail[cliInstalling.logTail.length - 1]}
+                  </div>
+                )}
+                <div className="ag-keyrow">
+                  <input
+                    placeholder="Command — use {prompt} where the message goes"
+                    value={cliCmdDraft || (cli.cmd || '')}
+                    onChange={(e) => setCliCmdDraft(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="ag-group-label muted">API brains — chat models with a key</div>
             <div className="ag-provs">
               {providers.map((p) => (
                 <button
                   key={p.id}
-                  className={'ag-prov' + (newProvider === p.id ? ' active' : '')}
-                  onClick={() => setNewProvider(p.id)}
+                  className={'ag-prov' + (engine === 'brain' && newProvider === p.id ? ' active' : '')}
+                  onClick={() => {
+                    setEngine('brain')
+                    setNewProvider(p.id)
+                  }}
                 >
                   <span className="ag-prov-name">{p.label}</span>
                   <span className="ag-prov-key">{p.hasKey ? 'key saved' : 'needs key'}</span>
                 </button>
               ))}
             </div>
-            {sel && (
-              <div className="ag-free muted">
-                {sel.freeNote}
-                {sel.keyUrl && (
-                  <>
-                    {' '}
-                    <a href={sel.keyUrl} target="_blank" rel="noreferrer">
-                      get a key
-                    </a>
-                  </>
-                )}
-              </div>
+            {engine === 'brain' && sel && (
+              <>
+                <div className="ag-free muted">
+                  {sel.freeNote}
+                  {sel.keyUrl && (
+                    <>
+                      {' '}
+                      <a href={sel.keyUrl} target="_blank" rel="noreferrer">
+                        get a key
+                      </a>
+                    </>
+                  )}
+                </div>
+                <div className="ag-keyrow">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder={
+                      sel.hasKey
+                        ? 'A key is saved — paste a new one to replace it'
+                        : 'Paste your ' + sel.label + ' API key'
+                    }
+                    value={keyDraft}
+                    onChange={(e) => setKeyDraft(e.target.value)}
+                  />
+                  <button className="btn" disabled={busy || !keyDraft.trim()} onClick={saveKey}>
+                    {sel.hasKey ? 'Replace key' : 'Save key'}
+                  </button>
+                </div>
+              </>
             )}
-            {sel && (
-              <div className="ag-keyrow">
-                <input
-                  type="password"
-                  autoComplete="off"
-                  placeholder={
-                    sel.hasKey
-                      ? 'A key is saved — paste a new one to replace it'
-                      : 'Paste your ' + sel.label + ' API key'
-                  }
-                  value={keyDraft}
-                  onChange={(e) => setKeyDraft(e.target.value)}
-                />
-                <button className="btn" disabled={busy || !keyDraft.trim()} onClick={saveKey}>
-                  {sel.hasKey ? 'Replace key' : 'Save key'}
-                </button>
-              </div>
-            )}
-            {sel && sel.id === 'custom' && (
-              <div className="ag-keyrow">
-                <input
-                  placeholder="Base URL, e.g. http://127.0.0.1:8080/v1"
-                  value={newEndpoint}
-                  onChange={(e) => setNewEndpoint(e.target.value)}
-                />
-                <input
-                  placeholder="Model name"
-                  value={newModel}
-                  onChange={(e) => setNewModel(e.target.value)}
-                />
-              </div>
-            )}
+
             <div className="ag-keyrow">
               <select value={newWorkspace} onChange={(e) => setNewWorkspace(e.target.value)}>
                 {workspaces.map((w) => (
@@ -311,9 +408,10 @@ export default function AgentPanel() {
               <div>
                 <div className="ag-head-title">{active ? active.title : 'Session'}</div>
                 <div className="ag-head-meta muted">
-                  {active && active.providerId}
-                  {active && active.model ? ' · ' + active.model : ''} · workspace:{' '}
-                  {active && active.workspace === '.' ? 'vault root' : active && active.workspace}
+                  {isCliSession
+                    ? (active.cliLabel || 'CLI') + ' · ' + (active.cliCmd || '')
+                    : (active && active.providerId) + (active && active.model ? ' · ' + active.model : '')}{' '}
+                  · workspace: {active && active.workspace === '.' ? 'vault root' : active && active.workspace}
                 </div>
               </div>
             </header>
@@ -337,8 +435,9 @@ export default function AgentPanel() {
                   <div className="iconbtn">
                     <Icon name="bot" size={22} />
                   </div>
-                  Give the agent a job. It can list and edit files in the workspace and run
-                  real commands — builds, scripts, git, anything a terminal can do.
+                  {isCliSession
+                    ? 'Talk to the CLI agent like a teammate. It works inside the workspace with its own tools — every line of its real output appears here.'
+                    : 'Give the agent a job. It can list and edit files in the workspace and run real commands — builds, scripts, git, anything a terminal can do.'}
                 </div>
               )}
               {messages.map((m, i) => {
@@ -350,12 +449,16 @@ export default function AgentPanel() {
                   )
                 if (m.role === 'tool') return <ToolChip key={i} m={m} />
                 return (
-                  <div key={i} className={'msg agent' + (m.error ? ' err' : '')}>
+                  <div
+                    key={i}
+                    className={'msg agent' + (m.error ? ' err' : '') + (m.engine === 'cli' ? ' msg-cli' : '')}
+                  >
                     {m.text}
+                    {m.streaming && <span className="ag-cursor" aria-hidden="true" />}
                   </div>
                 )
               })}
-              {running && <Typing />}
+              {running && <Typing isCli={isCliSession} />}
             </div>
 
             <div className="composer">
@@ -363,7 +466,9 @@ export default function AgentPanel() {
                 rows={1}
                 placeholder={
                   active && active.running
-                    ? 'The agent is working…'
+                    ? isCliSession
+                      ? 'The CLI agent is working…'
+                      : 'The agent is working…'
                     : 'Tell the agent what to do'
                 }
                 value={text}

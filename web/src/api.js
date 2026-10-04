@@ -81,6 +81,16 @@ export const deleteAgentSession = (id) =>
     headers: tokenHeaders()
   }).then(j)
 
+// --- CLI agent brains (real agents, running on this device) ---
+
+export const fetchCliStatus = () => fetch('/api/agent/cli/status').then(j)
+export const installCliPreset = (presetId) =>
+  fetch('/api/agent/cli/install', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ presetId })
+  }).then(j)
+
 // --- MittiHost runtime (LAN test + Cloudflare tunnel + load test) ---
 
 export const fetchHostLan = () => fetch('/api/host/lan').then(j)

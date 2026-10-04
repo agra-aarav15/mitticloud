@@ -12,7 +12,7 @@
   --grad-soft: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
   --danger: #e5e5e5;
   --amber: #d4d4d4;
-  --radius: 16px;
+  --radius: 14px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
 }
 
@@ -53,11 +53,11 @@ body {
 
 .glass {
   background: var(--card);
-  backdrop-filter: blur(20px) saturate(1.1);
-  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.05);
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 }
 
 .topbar {
@@ -151,9 +151,10 @@ body {
   color: var(--text);
 }
 .tab.active {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.24);
-  color: #fafafa;
+  background: linear-gradient(135deg, #ffffff, #d4d4d4);
+  border-color: #fafafa;
+  color: #0a0a0a;
+  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.14);
 }
 .tab:focus-visible {
   outline: 2px solid #fafafa;
@@ -309,7 +310,7 @@ body {
   text-align: center;
   color: var(--muted);
   padding: 44px 16px;
-  border: 1px dashed var(--line);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   font-size: 14px;
 }

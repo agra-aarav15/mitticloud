@@ -23,6 +23,8 @@ import multer from 'multer';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import badgeRouter from './badge.js';
+import { countHit } from '../lib/badgestats.js';
 import { DATA_DIR, resolveSafe, PathError } from '../lib/paths.js';
 import { zipRead } from '../lib/zip.js';
 
@@ -363,6 +365,7 @@ async function serveSiteFile(req, res, rel) {
   if (!st || st.isSymbolicLink() || !st.isFile()) return send404(res);
 
   const type = CONTENT_TYPES[path.extname(abs).toLowerCase()] || 'application/octet-stream';
+  if (type.startsWith('text/html')) countHit(name); // real page loads feed the MittiBadge
   const buf = await fsp.readFile(abs);
   res.setHeader('Content-Type', type);
   res.setHeader('Content-Length', buf.length);
@@ -418,6 +421,7 @@ serveRouter.get('/:name/*', async (req, res, next) => {
 function initSites(app) {
   app.use('/api/sites', apiRouter);
   app.use('/s', serveRouter);
+  app.use('/badge', badgeRouter);
 }
 
 export default apiRouter;

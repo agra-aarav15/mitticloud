@@ -21,7 +21,7 @@
 - **Free-tier servers come and go.** Oracle's "always free" instances get reclaimed, credits expire, fine print changes. A drawer-phone never asks for a credit card and never sends you a bill.
 - **Half a billion phones are sleeping.** ~500 million old phones sit in drawers doing nothing while e-waste piles up. The most powerful computer you already own deserves better than a junk drawer.
 
-## What you get in v0.9
+## What you get in v0.10
 
 | Feature | What it does |
 |---|---|
@@ -29,14 +29,15 @@
 | 📊 **Live dashboard** | Real battery (or an honest "AC power — no battery"), real storage, uptime, Tailscale/LAN access info, deep health checks — at a glance, from any device. |
 | 🖼️ **Photo backup** | Bulk upload from any device, automatic duplicate detection, date albums, favorites, download-all as ZIP. |
 | 📁 **Real drive** | Upload files and folders (streaming — big files OK), rename, move, copy, multi-select delete, download a folder as ZIP, search, per-folder storage usage. |
+| 🏅 **MittiBadge** | A live, embeddable badge proving a site runs on a drawer phone: visits today, uptime, power — real numbers, one `<img>` line, zero dependencies. Nothing like it exists. |
 | 🌐 **MittiHost + Publish** | Host real websites from the phone — upload a folder or ZIP, test on LAN, then **Publish to Cloudflare**: your own domain, free forever, never sleeps (Pages direct upload, zero dependencies — the cfn experience). Quick tunnel stays for instant previews; a 200-visitor load test proves it. |
-| 🤖 **Agent Server** | A real 24/7 agent living on the phone. Paste a free API key (Gemini, NVIDIA NIM, Groq, OpenCode Zen, or any OpenAI-compatible endpoint), pick a workspace folder, and it reads, writes and runs real commands — with sessions that survive restarts and resumable history from any browser. |
+| 🤖 **CLI Agent Server** | A REAL lightweight agent CLI (OpenCode, Gemini CLI, or any command you paste) runs on the phone — Claude-Code-class, with its own tools — and MittiCloud is its 24/7 body: chat drives it, real output streams into the session, the watchdog revives it, the battery asks before heavy work. API-model brains stay available too. One-tap installer. |
 | ⚡ **Automations** | Flip ready-made switches — nightly server health, weekly storage report, website uptime watch — and they just run on schedule, battery-aware. The engine also gives every job a secret link (`POST /hook/<id>`). |
 | 🛰️ **Remote** | One tab for every agent: this phone's 24/7 agent, your laptop's ZCode via its built-in **Web Remote Control** (paste the link once, open it in one tap), and **project memory** — context + files stored on the phone, resumable anywhere (`scripts/mitti-bridge.mjs`). |
 | 🔒 **Lock** | Optional one-token lock: visitors can look, only the token can change anything — including agent turns and task runs. |
 | 🗺️ **Living guides** | A checklist that reads real system state (Termux? Tailscale? first site? agent linked?) and ticks itself off — useful long after install. |
 | 🔋 **Battery mode** | Under 30% on battery, heavy work asks first: *"This could heat the phone — run anyway?"* Agent turns, tasks and scheduled jobs all follow the same law. |
-| 🛡️ **Robust** | Graceful restarts, daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1`, and a one-command test suite: `npm test` (84 checks). |
+| 🛡️ **Robust** | Graceful restarts, daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1`, and a one-command test suite: `npm test` (92 checks). |
 
 ## Quick Start (Termux)
 
@@ -153,7 +154,7 @@ Built by **Aarav ([@agra-aarav15](https://github.com/agra-aarav15))** with a fle
 
 ---
 
-> **Note:** v0.9.0 — the app got light and phone-shaped (bottom bar on phones, faster cards), Host now **publishes to your own Cloudflare domain**, Cloud Mode became **Remote** (ZCode Web Remote Control + project memory + the phone's own agent), and the Tasks tab became a switchboard in Status. Live screenshots in [`preview/`](preview/).
+> **Note:** v0.10.0 — the phone now runs REAL agent CLIs (OpenCode / Gemini CLI / any command) behind the agent chat, Home got a one-box start ("give your cloud a job"), the design went calm-premium-plain everywhere, and MittiBadge lets any site show it is served from a drawer phone. Live screenshots in [`preview/`](preview/).
 
 ## License
 

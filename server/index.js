@@ -14,6 +14,7 @@ import statusRouter from './routes/status.js';
 import photosRouter from './routes/photos.js';
 import filesRouter from './routes/files.js';
 import hostRouter from './routes/host.js';
+import badgeRouter from './routes/badge.js';
 import lockRouter from './routes/lock.js';
 import { initTasks } from './routes/tasks.js';
 import { initSites } from './routes/sites.js';
@@ -120,7 +121,7 @@ const IS_MAIN =
 
 if (IS_MAIN) {
   const server = app.listen(PORT, () => {
-    console.log(`MittiCloud v0.9.0 running at http://localhost:${PORT}`);
+    console.log(`MittiCloud v0.10.0 running at http://localhost:${PORT}`);
     for (const { iface, address } of getLanIPs()) {
       console.log(`  also on http://${address}:${PORT} (${iface})`);
     }
