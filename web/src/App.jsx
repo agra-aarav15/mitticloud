@@ -71,7 +71,6 @@ export default function App() {
               <div className="tagline">Your drawer-phone is a cloud now.</div>
             </div>
           </div>
-          <span className="chip chip-grad">v0.10.0</span>
         </header>
 
         <nav className="tabbar glass" role="tablist" aria-label="Sections">
@@ -101,7 +100,9 @@ export default function App() {
           </div>
         </main>
 
-        <footer className="foot muted">MittiCloud · free &amp; open source · runs on the phone in your drawer</footer>
+        <footer className="foot muted">
+          MittiCloud · free &amp; open source · runs on the phone in your drawer · v0.11.0
+        </footer>
       </div>
       <Toasts />
     </>

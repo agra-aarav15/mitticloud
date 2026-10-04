@@ -193,3 +193,37 @@
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
+
+/* --- the empty vault as a designed moment, not a blank box --- */
+.ph-empty {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 54px 20px 50px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.ph-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ffffff, #d4d4d4);
+  color: #0a0a0a;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 24px rgba(255, 255, 255, 0.12);
+  margin-bottom: 6px;
+}
+.ph-empty-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.ph-empty-sub {
+  max-width: 400px;
+  font-size: 13px;
+  line-height: 1.55;
+  margin-bottom: 10px;
+}

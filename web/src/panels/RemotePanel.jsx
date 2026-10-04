@@ -358,8 +358,8 @@ function ProjectMemory() {
 }
 
 const SEGMENTS = [
-  { id: 'zcode', label: 'Laptop · ZCode' },
   { id: 'phone', label: "This phone's agent" },
+  { id: 'zcode', label: 'Laptop · ZCode' },
   { id: 'memory', label: 'Project memory' }
 ]
 
@@ -367,9 +367,9 @@ export default function RemotePanel() {
   const [seg, setSeg] = useState(() => {
     try {
       const s = localStorage.getItem(SEG_KEY)
-      return SEGMENTS.some((x) => x.id === s) ? s : 'zcode'
+      return SEGMENTS.some((x) => x.id === s) ? s : 'phone'
     } catch {
-      return 'zcode'
+      return 'phone'
     }
   })
 

@@ -340,6 +340,100 @@ body {
   }
 }
 
+/* --- v0.11 MittiMotion — the app breathes. Staggered entrances, live dots,
+   spinning states. Pure CSS, cheap on old phones, killed by reduced-motion. --- */
+
+/* staggered rise: every block on a page lands 45ms after the last one */
+.main-fade > * {
+  animation: rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.main-fade > *:nth-child(1) { animation-delay: 0.02s; }
+.main-fade > *:nth-child(2) { animation-delay: 0.06s; }
+.main-fade > *:nth-child(3) { animation-delay: 0.1s; }
+.main-fade > *:nth-child(4) { animation-delay: 0.14s; }
+.main-fade > *:nth-child(5) { animation-delay: 0.18s; }
+.main-fade > *:nth-child(6) { animation-delay: 0.22s; }
+.main-fade > *:nth-child(7) { animation-delay: 0.26s; }
+.main-fade > *:nth-child(8) { animation-delay: 0.3s; }
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* live dot — a small white pulse for "this is happening right now" */
+.livedot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fafafa;
+  position: relative;
+  margin-right: 3px;
+  vertical-align: 1px;
+}
+.livedot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  animation: ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes ping {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.9;
+  }
+  75%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+/* spinner for busy buttons (dark on white primary, light on ghost) */
+.spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid rgba(10, 10, 10, 0.25);
+  border-top-color: #0a0a0a;
+  animation: spin 0.7s linear infinite;
+}
+.btn:not(.btn-primary) .spin {
+  border-color: rgba(255, 255, 255, 0.25);
+  border-top-color: #fafafa;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* premium details: thin dark scrollbars, white text selection */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+::selection {
+  background: #fafafa;
+  color: #0a0a0a;
+}
+
 /* --- phone-first app shell: fixed bottom bar, lighter glass --- */
 @media (max-width: 760px) {
   .app {

@@ -244,11 +244,22 @@ export default function PhotosPanel() {
           ))}
         </div>
       ) : count === 0 ? (
-        <div className="empty">
-          <div className="btn iconbtn" aria-hidden="true">
-            <Icon name="image" size={22} />
+        <div className="ph-empty">
+          <div className="ph-empty-icon" aria-hidden="true">
+            <Icon name="image" size={26} />
           </div>
-          No photos yet — upload your first memories.
+          <div className="ph-empty-title">Your vault is empty</div>
+          <div className="ph-empty-sub muted">
+            Every photo you upload lives on this phone — private, unlimited, free. Upload once,
+            safe forever.
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={() => inputRef.current && inputRef.current.click()}
+            disabled={uploading}
+          >
+            <Icon name="upload" size={15} /> Upload your first photos
+          </button>
         </div>
       ) : (
         <div className="ph-grid">

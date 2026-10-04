@@ -121,7 +121,7 @@ const IS_MAIN =
 
 if (IS_MAIN) {
   const server = app.listen(PORT, () => {
-    console.log(`MittiCloud v0.10.0 running at http://localhost:${PORT}`);
+    console.log(`MittiCloud v0.11.0 running at http://localhost:${PORT}`);
     for (const { iface, address } of getLanIPs()) {
       console.log(`  also on http://${address}:${PORT} (${iface})`);
     }

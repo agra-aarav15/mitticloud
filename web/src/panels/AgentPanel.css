@@ -134,8 +134,8 @@
 }
 .ag-setup h2 {
   margin: 0;
-  font-size: 20px;
-  letter-spacing: -0.01em;
+  font-size: 22px;
+  letter-spacing: -0.02em;
 }
 .ag-setup p {
   margin: 0;
@@ -177,6 +177,30 @@
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+.ag-prov-key.ok {
+  color: #e5e5e5;
+}
+
+/* the tray: config of the selected brain reads as one unit, not loose rows */
+.ag-tray {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: rise 0.3s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.ag-startrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ag-startrow select {
+  flex: 1;
 }
 .ag-free {
   font-size: 12.5px;

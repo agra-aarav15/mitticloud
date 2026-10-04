@@ -282,13 +282,13 @@ export default function AgentPanel() {
       <section className="agent-main glass">
         {showSetup ? (
           <div className="ag-setup">
-            <h2>Start an agent session</h2>
+            <h2>Wake your agent</h2>
             <p className="muted">
-              A real agent runs on this device and works inside the folder you pick — reading,
-              writing and running commands while you watch every line.
+              A real agent lives on this device. It reads, writes and runs commands inside the
+              folder you pick — and you watch every line land.
             </p>
 
-            <div className="ag-group-label muted">CLI brains — real agents, running here</div>
+            <div className="ag-group-label muted">Real brains — CLI agents, running here</div>
             <div className="ag-provs">
               {cliPresets.map((p) => (
                 <button
@@ -301,7 +301,7 @@ export default function AgentPanel() {
                   }}
                 >
                   <span className="ag-prov-name">{p.label}</span>
-                  <span className="ag-prov-key">
+                  <span className={'ag-prov-key' + (p.installed ? ' ok' : '')}>
                     {p.id === 'custom'
                       ? 'your command'
                       : p.installed
@@ -312,7 +312,7 @@ export default function AgentPanel() {
               ))}
             </div>
             {engine === 'cli' && cli && (
-              <>
+              <div className="ag-tray">
                 <div className="ag-free muted">{cli.note}</div>
                 {cli.id !== 'custom' && !cli.installed && (
                   <div className="ag-keyrow">
@@ -322,6 +322,7 @@ export default function AgentPanel() {
                       disabled={busy || Boolean(cliInstalling)}
                       onClick={installCli}
                     >
+                      {cliInstalling && <span className="spin" aria-hidden="true" />}
                       {cliInstalling ? 'Installing…' : 'Install on this device'}
                     </button>
                   </div>
@@ -338,10 +339,10 @@ export default function AgentPanel() {
                     onChange={(e) => setCliCmdDraft(e.target.value)}
                   />
                 </div>
-              </>
+              </div>
             )}
 
-            <div className="ag-group-label muted">API brains — chat models with a key</div>
+            <div className="ag-group-label muted">Chat brains — models with an API key</div>
             <div className="ag-provs">
               {providers.map((p) => (
                 <button
@@ -353,12 +354,14 @@ export default function AgentPanel() {
                   }}
                 >
                   <span className="ag-prov-name">{p.label}</span>
-                  <span className="ag-prov-key">{p.hasKey ? 'key saved' : 'needs key'}</span>
+                  <span className={'ag-prov-key' + (p.hasKey ? ' ok' : '')}>
+                    {p.hasKey ? 'key saved' : 'needs key'}
+                  </span>
                 </button>
               ))}
             </div>
             {engine === 'brain' && sel && (
-              <>
+              <div className="ag-tray">
                 <div className="ag-free muted">
                   {sel.freeNote}
                   {sel.keyUrl && (
@@ -386,10 +389,10 @@ export default function AgentPanel() {
                     {sel.hasKey ? 'Replace key' : 'Save key'}
                   </button>
                 </div>
-              </>
+              </div>
             )}
 
-            <div className="ag-keyrow">
+            <div className="ag-startrow">
               <select value={newWorkspace} onChange={(e) => setNewWorkspace(e.target.value)}>
                 {workspaces.map((w) => (
                   <option key={w.id} value={w.id}>
@@ -397,10 +400,11 @@ export default function AgentPanel() {
                   </option>
                 ))}
               </select>
+              <button className="btn btn-primary" disabled={busy} onClick={createSession}>
+                {busy && <span className="spin" aria-hidden="true" />}
+                Start session
+              </button>
             </div>
-            <button className="btn btn-primary" disabled={busy} onClick={createSession}>
-              Start session
-            </button>
           </div>
         ) : (
           <>
