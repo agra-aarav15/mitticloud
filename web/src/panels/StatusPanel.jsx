@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
 import { fetchStatus, humanizeBytes, humanizeUptime, toast } from '../api.js'
+import AutomationsCard from './AutomationsCard.jsx'
 import './StatusPanel.css'
 
 const POLL_MS = 30000
@@ -523,6 +524,8 @@ export default function StatusPanel() {
             )}
           </section>
         )}
+
+        <AutomationsCard />
       </div>
     </div>
   )

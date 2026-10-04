@@ -14,7 +14,18 @@ import { Router } from 'express';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
 import { getLanIPs } from '../lib/net.js';
+import { DATA_DIR } from '../lib/paths.js';
+import {
+  loadToken,
+  saveToken,
+  clearToken,
+  accountsList,
+  collectFiles,
+  deploySite,
+} from '../lib/cfpages.js';
 
 const router = Router();
 
@@ -123,6 +134,90 @@ router.post('/tunnel/stop', (req, res) => {
     // already gone
   }
   res.json({ ok: true, ...tunnelStatus() });
+});
+
+// --- Cloudflare Pages: publish a hosted site to the user's own domain ---
+// (the cfn experience: site on Cloudflare, free forever, never sleeps)
+
+const SITE_NAME_RE = /^[a-z0-9-]{1,32}$/;
+
+router.get('/cf/status', async (req, res, next) => {
+  try {
+    const token = loadToken();
+    if (!token) return res.json({ connected: false });
+    try {
+      const accounts = await accountsList(globalThis.fetch, token);
+      res.json({ connected: true, accounts });
+    } catch (err) {
+      res.json({ connected: false, error: err.message });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/cf/token', async (req, res, next) => {
+  try {
+    const token = String((req.body || {}).token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Paste the Cloudflare API token' });
+    if (token.length > 300) return res.status(400).json({ error: 'That token is too long' });
+    let accounts;
+    try {
+      accounts = await accountsList(globalThis.fetch, token);
+    } catch (err) {
+      return res.status(400).json({
+        error:
+          'Cloudflare rejected the token (' +
+          err.message +
+          '). It needs the "Cloudflare Pages: Edit" permission.',
+      });
+    }
+    if (!accounts.length) {
+      return res.status(400).json({ error: 'That token sees no Cloudflare accounts' });
+    }
+    saveToken(token);
+    res.json({ ok: true, accounts });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/cf/token', (req, res) => {
+  clearToken();
+  res.json({ ok: true, connected: false });
+});
+
+// one publish at a time
+let cfPublishing = false;
+
+router.post('/cf/publish', async (req, res, next) => {
+  try {
+    if (cfPublishing) return res.status(409).json({ error: 'A publish is already running' });
+    const token = loadToken();
+    if (!token) return res.status(400).json({ error: 'Save a Cloudflare API token first' });
+    const site = String((req.body || {}).site || '').trim();
+    if (!SITE_NAME_RE.test(site)) return res.status(400).json({ error: 'Pick one of your hosted sites' });
+    const accountId = String((req.body || {}).accountId || '').trim();
+    if (!/^[a-f0-9]{16,64}$/i.test(accountId)) {
+      return res.status(400).json({ error: 'Pick the Cloudflare account to publish under' });
+    }
+    const siteDir = path.join(DATA_DIR, 'sites', site);
+    if (!fs.existsSync(siteDir)) {
+      return res.status(404).json({ error: 'No hosted site called ' + site });
+    }
+    const files = collectFiles(siteDir);
+
+    cfPublishing = true;
+    try {
+      const out = await deploySite(globalThis.fetch, token, accountId, 'mitticloud-' + site, files);
+      res.json({ ok: true, site, ms: null, ...out });
+    } finally {
+      cfPublishing = false;
+    }
+  } catch (err) {
+    cfPublishing = false;
+    next(err);
+  }
 });
 
 // --- load test: real concurrent requests, zero dependencies ---

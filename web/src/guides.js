@@ -43,14 +43,14 @@ export const GUIDE_STEPS = [
   },
   {
     id: 'first-task',
-    title: 'First MittiOps task created',
-    passNote: 'At least one MittiOps task exists.',
+    title: 'First automation turned on',
+    passNote: 'At least one automation or task exists.',
     pending: [
-      'MittiOps runs scheduled jobs and webhooks on this cloud — and defers them on low battery.',
-      'Create a task in the Tasks tab, or trigger one with POST /hook/<webhookId>.',
-      'If the phone is on battery below 30%, the job waits and runs when charging.'
+      'Automations are little jobs this cloud runs on a schedule — and defers on low battery.',
+      'Flip a ready-made switch in the Status tab (Automations card).',
+      'Anything you create there also gets its own secret link: POST /hook/<webhookId>.'
     ],
-    cta: { label: 'Open Tasks', tab: 'tasks' }
+    cta: { label: 'Open Status', tab: 'status' }
   },
   {
     id: 'first-site',
@@ -65,14 +65,14 @@ export const GUIDE_STEPS = [
   },
   {
     id: 'bridge',
-    title: 'Coding agent linked (Cloud Mode)',
-    passNote: 'A Cloud Mode session exists on this cloud.',
+    title: 'Project memory linked (Remote)',
+    passNote: 'A project memory session exists on this cloud.',
     pending: [
-      'Cloud Mode stores your coding agent\'s context window, chat and files on this phone.',
+      'Project memory stores your coding agent\'s context, chat and files on this phone.',
       'On the laptop: node scripts/mitti-bridge.mjs new <name>, then save <id> CLAUDE.md.',
-      'Resume the session from any device with resume <id> — or start a new chat anytime.'
+      'Resume the session from any device with resume <id> — or from the Remote tab.'
     ],
-    cta: { label: 'Open Cloud Mode', tab: 'bridge' }
+    cta: { label: 'Open Remote', tab: 'remote' }
   },
   {
     id: 'phone-app',

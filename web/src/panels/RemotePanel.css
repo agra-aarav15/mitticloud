@@ -1,0 +1,191 @@
+/* RemotePanel — one tab for every agent: this phone's, the laptop's ZCode
+   session, and project memory. Segmented, plain, monochrome. */
+
+.rp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.rp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+}
+.rp-title {
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.rp-subtitle {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.rp-segments {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rp-seg {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.rp-seg:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.rp-seg.active {
+  background: #fafafa;
+  border-color: #fafafa;
+  color: #0a0a0a;
+}
+.rp-seg:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 2px;
+}
+
+.rp-body {
+  min-width: 0;
+}
+
+/* shared story + rows */
+.rp-story {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.rp-story b {
+  color: #e5e5e5;
+}
+.rp-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.rp-actions input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+.rp-actions input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.rp-actions input::placeholder {
+  color: rgba(163, 163, 163, 0.65);
+}
+.rp-actions label.btn {
+  cursor: pointer;
+}
+.rp-file {
+  display: none;
+}
+.rp-progress {
+  font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  margin-top: 8px;
+}
+
+/* ZCode launcher */
+.rp-zcode {
+  padding: 20px clamp(16px, 4%, 28px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+.rp-steps {
+  margin: 0 0 4px;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.rp-saved {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.rp-saved-url {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-zcode .rp-actions {
+  margin-top: 12px;
+}
+.rp-open {
+  text-decoration: none;
+}
+
+/* project memory */
+.rp-memory {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rp-card {
+  padding: 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rp-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rp-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rp-name {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+.rp-meta {
+  font-size: 12px;
+}
+.rp-pre {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 260px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e5e5e5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.rp-sk-line {
+  height: 14px;
+}
+
+@media (max-width: 760px) {
+  .rp-card-actions {
+    align-self: flex-end;
+  }
+}

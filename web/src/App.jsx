@@ -2,22 +2,20 @@ import React, { useEffect, useState } from 'react'
 import StatusPanel from './panels/StatusPanel.jsx'
 import PhotosPanel from './panels/PhotosPanel.jsx'
 import FilesPanel from './panels/FilesPanel.jsx'
-import TasksPanel from './panels/TasksPanel.jsx'
 import HostPanel from './panels/HostPanel.jsx'
-import AgentPanel from './panels/AgentPanel.jsx'
-import BridgePanel from './panels/BridgePanel.jsx'
+import RemotePanel from './panels/RemotePanel.jsx'
 import GuidesPanel from './panels/GuidesPanel.jsx'
+import HomePanel from './panels/HomePanel.jsx'
 import { Icon } from './icons.jsx'
 import { onToast } from './api.js'
 
 const TABS = [
+  { id: 'home', label: 'Home', icon: 'pot' },
   { id: 'status', label: 'Status', icon: 'gauge' },
   { id: 'photos', label: 'Photos', icon: 'image' },
   { id: 'files', label: 'Files', icon: 'folder' },
-  { id: 'tasks', label: 'Tasks', icon: 'bolt' },
   { id: 'host', label: 'Host', icon: 'globe' },
-  { id: 'agent', label: 'Agent', icon: 'bot' },
-  { id: 'bridge', label: 'Cloud Mode', icon: 'link' },
+  { id: 'remote', label: 'Remote', icon: 'bot' },
   { id: 'guides', label: 'Guides', icon: 'shield' }
 ]
 
@@ -45,14 +43,15 @@ function Toasts() {
 const VALID_TABS = TABS.map((t) => t.id)
 const tabFromHash = () => {
   const h = window.location.hash.replace('#', '')
-  return VALID_TABS.includes(h) ? h : 'status'
+  return VALID_TABS.includes(h) ? h : 'home'
 }
 
 export default function App() {
   const [tab, setTabState] = useState(tabFromHash)
   const setTab = (id) => {
     setTabState(id)
-    window.history.replaceState(null, '', id === 'status' ? '#' : '#' + id)
+    window.history.replaceState(null, '', id === 'home' ? '#' : '#' + id)
+    window.scrollTo(0, 0)
   }
   useEffect(() => {
     const onHash = () => setTabState(tabFromHash())
@@ -72,7 +71,7 @@ export default function App() {
               <div className="tagline">Your drawer-phone is a cloud now.</div>
             </div>
           </div>
-          <span className="chip chip-grad">v0.8.0</span>
+          <span className="chip chip-grad">v0.9.0</span>
         </header>
 
         <nav className="tabbar glass" role="tablist" aria-label="Sections">
@@ -91,14 +90,15 @@ export default function App() {
         </nav>
 
         <main className="main" role="tabpanel">
-        {tab === 'status' && <StatusPanel />}
-        {tab === 'photos' && <PhotosPanel />}
-        {tab === 'files' && <FilesPanel />}
-        {tab === 'tasks' && <TasksPanel />}
-          {tab === 'host' && <HostPanel />}
-          {tab === 'agent' && <AgentPanel />}
-          {tab === 'bridge' && <BridgePanel />}
-          {tab === 'guides' && <GuidesPanel onGoTo={setTab} />}
+          <div className="main-fade" key={tab}>
+            {tab === 'home' && <HomePanel onGoTo={setTab} />}
+            {tab === 'status' && <StatusPanel />}
+            {tab === 'photos' && <PhotosPanel />}
+            {tab === 'files' && <FilesPanel />}
+            {tab === 'host' && <HostPanel />}
+            {tab === 'remote' && <RemotePanel />}
+            {tab === 'guides' && <GuidesPanel onGoTo={setTab} />}
+          </div>
         </main>
 
         <footer className="foot muted">MittiCloud · free &amp; open source · runs on the phone in your drawer</footer>

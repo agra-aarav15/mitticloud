@@ -21,21 +21,22 @@
 - **Free-tier servers come and go.** Oracle's "always free" instances get reclaimed, credits expire, fine print changes. A drawer-phone never asks for a credit card and never sends you a bill.
 - **Half a billion phones are sleeping.** ~500 million old phones sit in drawers doing nothing while e-waste piles up. The most powerful computer you already own deserves better than a junk drawer.
 
-## What you get in v0.8
+## What you get in v0.9
 
 | Feature | What it does |
 |---|---|
+| 🏠 **Home** | A lightweight start screen: one honest sentence from live data ("1 site live · 438 photos safe · agent idle · AC power"), four big ways to start, and what you touched last. |
 | 📊 **Live dashboard** | Real battery (or an honest "AC power — no battery"), real storage, uptime, Tailscale/LAN access info, deep health checks — at a glance, from any device. |
 | 🖼️ **Photo backup** | Bulk upload from any device, automatic duplicate detection, date albums, favorites, download-all as ZIP. |
 | 📁 **Real drive** | Upload files and folders (streaming — big files OK), rename, move, copy, multi-select delete, download a folder as ZIP, search, per-folder storage usage. |
-| 🌐 **MittiHost + Go Live** | Host real websites from the phone — upload a folder or ZIP, test on LAN, then go public: one-click Cloudflare quick tunnel (temporary URL, no account) or a token tunnel (your own hostname, made for 24/7 shops) — the cfn flow, in-app. Prove it with a built-in 200-visitor load test. |
+| 🌐 **MittiHost + Publish** | Host real websites from the phone — upload a folder or ZIP, test on LAN, then **Publish to Cloudflare**: your own domain, free forever, never sleeps (Pages direct upload, zero dependencies — the cfn experience). Quick tunnel stays for instant previews; a 200-visitor load test proves it. |
 | 🤖 **Agent Server** | A real 24/7 agent living on the phone. Paste a free API key (Gemini, NVIDIA NIM, Groq, OpenCode Zen, or any OpenAI-compatible endpoint), pick a workspace folder, and it reads, writes and runs real commands — with sessions that survive restarts and resumable history from any browser. |
-| ⚡ **Tasks** | Little jobs the phone runs for you — on a repeat, once, or when someone opens their secret link (`POST /hook/<id>`). One-tap examples: battery report, storage check, watch my website. |
-| 🧠 **Cloud Mode** | Your laptop coding agent's brain on the phone: context window, chat history, project files — resume any session from any device (`scripts/mitti-bridge.mjs`). |
+| ⚡ **Automations** | Flip ready-made switches — nightly server health, weekly storage report, website uptime watch — and they just run on schedule, battery-aware. The engine also gives every job a secret link (`POST /hook/<id>`). |
+| 🛰️ **Remote** | One tab for every agent: this phone's 24/7 agent, your laptop's ZCode via its built-in **Web Remote Control** (paste the link once, open it in one tap), and **project memory** — context + files stored on the phone, resumable anywhere (`scripts/mitti-bridge.mjs`). |
 | 🔒 **Lock** | Optional one-token lock: visitors can look, only the token can change anything — including agent turns and task runs. |
 | 🗺️ **Living guides** | A checklist that reads real system state (Termux? Tailscale? first site? agent linked?) and ticks itself off — useful long after install. |
 | 🔋 **Battery mode** | Under 30% on battery, heavy work asks first: *"This could heat the phone — run anyway?"* Agent turns, tasks and scheduled jobs all follow the same law. |
-| 🛡️ **Robust** | Graceful restarts, daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1`, and a one-command test suite: `npm test` (76 checks). |
+| 🛡️ **Robust** | Graceful restarts, daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1`, and a one-command test suite: `npm test` (84 checks). |
 
 ## Quick Start (Termux)
 
@@ -88,7 +89,7 @@ npm start
 │   ├─ /api/sites    → MittiHost  (+ /s/<n>)  │
 │   ├─ /api/agent    → Agent Server (24/7,    │
 │   │                  multi-provider brains) │
-│   ├─ /api/bridge   → Cloud Mode sessions    │
+│   ├─ /api/bridge   → Remote: memory         │
 │   └─ vault/        → photos/YYYY/MM/DD,     │
 │                      files/, sites/,        │
 │                      bridge/<session>/      │
@@ -99,9 +100,9 @@ npm start
 
 No database, no CDN, no build step — a filesystem and vanilla JS. If your Wi-Fi is down, your cloud still works from your desk.
 
-## Cloud Mode — your coding agent's brain, on the phone
+## Remote — project memory, on the phone
 
-Run Claude Code, ZCode, MiniMax Code (or anything) on your laptop while the phone stores the session — context window, chat history and project files:
+The **Remote** tab keeps three things together: this phone's own 24/7 agent, your laptop's ZCode session through its built-in Web Remote Control, and project memory. The memory part works from your laptop terminal — run Claude Code, ZCode, MiniMax Code (or anything) while the phone stores the session — context window, chat history and project files:
 
 ```bash
 node scripts/mitti-bridge.mjs new my-project            # → id: a1b2c3d4
@@ -152,7 +153,7 @@ Built by **Aarav ([@agra-aarav15](https://github.com/agra-aarav15))** with a fle
 
 ---
 
-> **Note:** v0.8.0 — no more fake anything: real battery/storage/Tailscale, the Sandbox became a 24/7 multi-provider **Agent Server**, MittiHost got the **Go Live** flow (LAN → Cloudflare → 200-visitor proof), Tasks speak plain words. Live screenshots in [`preview/`](preview/).
+> **Note:** v0.9.0 — the app got light and phone-shaped (bottom bar on phones, faster cards), Host now **publishes to your own Cloudflare domain**, Cloud Mode became **Remote** (ZCode Web Remote Control + project memory + the phone's own agent), and the Tasks tab became a switchboard in Status. Live screenshots in [`preview/`](preview/).
 
 ## License
 

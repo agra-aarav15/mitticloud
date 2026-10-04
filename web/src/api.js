@@ -3,7 +3,7 @@
 // The lock token (set via Status → Security or the Host panel) rides on every
 // write so the owner never gets locked out of his own server. Reads stay open.
 const TOKEN_KEY = 'mitti_token'
-function tokenHeaders(extra = {}) {
+export function tokenHeaders(extra = {}) {
   let t = ''
   try {
     t = sessionStorage.getItem(TOKEN_KEY) || ''
@@ -104,6 +104,24 @@ export const runLoadTest = (payload) =>
     method: 'POST',
     headers: tokenHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload)
+  }).then(j)
+
+// --- Cloudflare Pages (publish a site to the user's own domain) ---
+
+export const fetchCfStatus = () => fetch('/api/host/cf/status').then(j)
+export const saveCfToken = (token) =>
+  fetch('/api/host/cf/token', {
+    method: 'PUT',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ token })
+  }).then(j)
+export const clearCfToken = () =>
+  fetch('/api/host/cf/token', { method: 'DELETE', headers: tokenHeaders() }).then(j)
+export const publishCfSite = (site, accountId) =>
+  fetch('/api/host/cf/publish', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ site, accountId })
   }).then(j)
 
 // --- Tasks (little jobs) ---

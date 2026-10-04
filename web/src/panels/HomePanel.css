@@ -1,0 +1,153 @@
+/* HomePanel — the lightweight start screen. Monochrome, no heavy effects. */
+
+.hm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hm-hero {
+  padding: 26px clamp(18px, 5%, 32px) 24px;
+}
+.hm-overline {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.hm-title {
+  margin: 0;
+  font-size: clamp(22px, 5vw, 30px);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.hm-stats {
+  margin-top: 10px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.hm-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 560px) {
+  .hm-tiles {
+    grid-template-columns: 1fr 1fr;
+  }
+  .hm-tile {
+    padding: 14px 12px 12px;
+  }
+  .hm-tile-sub {
+    font-size: 11.5px;
+  }
+}
+.hm-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px 18px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+.hm-tile:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+.hm-tile:active {
+  transform: translateY(0);
+}
+.hm-tile:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 2px;
+}
+.hm-tile-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff, #d4d4d4);
+  color: #0a0a0a;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.12);
+}
+.hm-tile-name {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.hm-tile-sub {
+  font-size: 12.5px;
+}
+
+.hm-continue {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hm-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 4px 2px;
+}
+.hm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+.hm-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.hm-row-main {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hm-row .muted {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.hm-guides {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 4px 2px;
+  color: var(--muted);
+}
+.hm-guides:hover {
+  color: #fafafa;
+}

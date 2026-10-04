@@ -1,6 +1,6 @@
 {
   "name": "mitticloud",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Your drawer-phone is a cloud now. Free personal cloud (photo vault, file server, status dashboard) for an old Android phone running Termux.",
   "type": "module",
   "main": "server/index.js",

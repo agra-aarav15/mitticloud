@@ -1,0 +1,78 @@
+/* AutomationsCard — recipe rows with switches, inside the Status panel. */
+
+.ac-lede {
+  font-size: 13px;
+  margin: -2px 0 6px;
+}
+.ac-sk {
+  height: 16px;
+}
+.ac-list {
+  display: flex;
+  flex-direction: column;
+}
+.ac-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 11px 2px;
+  border-top: 1px solid var(--line);
+}
+.ac-row:first-child {
+  border-top: none;
+}
+.ac-switch {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  width: 42px;
+  height: 24px;
+  min-width: 42px;
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+  margin-top: 2px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ac-switch .ac-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #a3a3a3;
+  transition: left 0.15s, background 0.15s;
+}
+.ac-switch.on {
+  background: #fafafa;
+  border-color: #fafafa;
+}
+.ac-switch.on .ac-knob {
+  left: 20px;
+  background: #0a0a0a;
+}
+.ac-switch:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.ac-switch:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 2px;
+}
+.ac-text {
+  min-width: 0;
+}
+.ac-name {
+  font-weight: 650;
+  font-size: 14px;
+}
+.ac-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 1px;
+}
+.ac-last {
+  font-size: 11.5px;
+  margin-top: 3px;
+}
