@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { fetchStatus, humanizeBytes, humanizeUptime, toast } from '../api.js'
+import { fetchStatus, humanizeBytes, humanizeUptime, toast, fetchDeepHealth, runBackupNow } from '../api.js'
 import AutomationsCard from './AutomationsCard.jsx'
 import './StatusPanel.css'
 
@@ -103,7 +103,36 @@ export default function StatusPanel() {
   const [lockMode, setLockMode] = useState(null) // null | 'set' | 'clear'
   const [lockTok, setLockTok] = useState('')
   const [lockBusy, setLockBusy] = useState(false)
+  const [health, setHealth] = useState(null)
+  const [healthBusy, setHealthBusy] = useState(false)
+  const [backupBusy, setBackupBusy] = useState(false)
+  const [backupAt, setBackupAt] = useState(null)
   const mountedRef = useRef(true)
+
+  const runCheck = useCallback(async () => {
+    setHealthBusy(true)
+    try {
+      const d = await fetchDeepHealth()
+      if (mountedRef.current) setHealth(d)
+    } catch (err) {
+      if (mountedRef.current) setHealth({ error: err.message || 'unavailable' })
+    } finally {
+      if (mountedRef.current) setHealthBusy(false)
+    }
+  }, [])
+
+  const doBackup = async () => {
+    setBackupBusy(true)
+    try {
+      const d = await runBackupNow()
+      if (mountedRef.current) setBackupAt(new Date().toLocaleTimeString())
+      toast('Backup written to ' + (d.folder || 'data/backups'), 'ok')
+    } catch (err) {
+      toast(err.message || 'Backup failed', 'err')
+    } finally {
+      if (mountedRef.current) setBackupBusy(false)
+    }
+  }
 
   // Silent loader: returns success so callers decide how to surface failures.
   const load = useCallback(async () => {
@@ -137,6 +166,7 @@ export default function StatusPanel() {
       if (!ok) setOffline(true)
     })()
     loadLock()
+    runCheck()
 
     const timer = setInterval(() => {
       load()
@@ -151,7 +181,7 @@ export default function StatusPanel() {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [load, loadLock])
+  }, [load, loadLock, runCheck])
 
   const anyMocked = Boolean(
     status && ((status.battery && status.battery.mocked) || (status.storage && status.storage.mocked))
@@ -524,6 +554,45 @@ export default function StatusPanel() {
             )}
           </section>
         )}
+
+        <section className="st-card glass st-wide" aria-label="Self-check">
+          <CardHead icon="gauge" label="Self-check" />
+          {health === null ? (
+            <div className="skeleton st-sk-line" style={{ width: 200 }} />
+          ) : health.error ? (
+            <div className="st-hint muted">
+              Couldn't run the self-check — {health.error}.{' '}
+              <button className="st-linkbtn" onClick={runCheck}>Retry</button>
+            </div>
+          ) : (
+            <>
+              <div className="st-big">{health.ok ? 'All checks pass' : 'Something needs a look'}</div>
+              <div className="st-chips">
+                <span className={'chip ' + (health.vaultWritable ? 'chip-ok' : 'chip-warn')}>
+                  vault {health.vaultWritable ? 'writable' : 'read-only'}
+                </span>
+                {health.mem && <span className="chip">{health.mem.freeMB} MB free RAM</span>}
+                {(health.checks || []).map((c) => (
+                  <span key={c.name} className={'chip ' + (c.ok ? 'chip-ok' : 'chip-warn')}>
+                    {c.name}
+                  </span>
+                ))}
+              </div>
+              <div className="st-lockrow">
+                <button className="btn" onClick={runCheck} disabled={healthBusy}>
+                  {healthBusy && <span className="spin" aria-hidden="true" />}
+                  {healthBusy ? 'Checking…' : 'Re-check'}
+                </button>
+                <button className="btn" onClick={doBackup} disabled={backupBusy}>
+                  {backupBusy && <span className="spin" aria-hidden="true" />}
+                  <Icon name="download" size={15} />
+                  {backupBusy ? 'Backing up…' : 'Backup now'}
+                </button>
+                {backupAt && <span className="chip chip-ok">backed up {backupAt}</span>}
+              </div>
+            </>
+          )}
+        </section>
 
         <AutomationsCard />
       </div>

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { toast, humanizeBytes, timeAgo } from '../api.js'
+import { toast, humanizeBytes, timeAgo, copyText } from '../api.js'
 import GoLive from './GoLive.jsx'
 import './HostPanel.css'
 
@@ -213,22 +213,24 @@ export default function HostPanel() {
       toast('That folder is empty', 'info')
       return
     }
-    const tooBig = picked.find((f) => f.size > MAX_FILE_BYTES)
-    if (tooBig) {
-      toast(tooBig.name + ' is larger than 2 MB — not uploaded', 'err')
+// one oversized file skips itself instead of sinking the whole publish
+    const tooBig = picked.filter((f) => f.size > MAX_FILE_BYTES)
+    const usable = picked.filter((f) => f.size <= MAX_FILE_BYTES)
+    if (usable.length === 0) {
+      toast('Every file was larger than 2 MB — nothing to upload', 'err')
       return
     }
 
     setUploading(true)
     try {
-      setProgress('Creating site ' + siteName + '…')
+      setProgress('Creating site ' + siteName + '...')
       await ensureSite(siteName)
 
       // batch uploads to stay under the server's per-request cap
       const batches = []
       let cur = []
       let curBytes = 0
-      for (const f of picked) {
+      for (const f of usable) {
         if (cur.length > 0 && (cur.length >= BATCH_FILES || curBytes + f.size > BATCH_BYTES)) {
           batches.push(cur)
           cur = []
@@ -240,7 +242,7 @@ export default function HostPanel() {
       if (cur.length > 0) batches.push(cur)
 
       let done = 0
-      if (mountedRef.current) setProgress('Uploading 0/' + picked.length)
+      if (mountedRef.current) setProgress('Uploading 0/' + usable.length)
       for (const batch of batches) {
         const files = []
         for (const f of batch) {
@@ -248,10 +250,15 @@ export default function HostPanel() {
         }
         await uploadSiteFiles(siteName, files)
         done += batch.length
-        if (mountedRef.current) setProgress('Uploading ' + done + '/' + picked.length)
+        if (mountedRef.current) setProgress('Uploading ' + done + '/' + usable.length)
       }
 
-      toast('Site published at /s/' + siteName, 'ok')
+      toast(
+        'Site published at /s/' +
+          siteName +
+          (tooBig.length ? ' · skipped ' + tooBig.length + ' over 2 MB' : ''),
+        'ok'
+      )
       if (mountedRef.current) setName('')
       await load(true)
     } catch (err) {
@@ -293,12 +300,8 @@ export default function HostPanel() {
 
   const copyUrl = async (site) => {
     const url = siteUrl(site.name)
-    try {
-      await navigator.clipboard.writeText(url)
-      toast('Site URL copied', 'ok')
-    } catch {
-      toast('Could not copy — ' + url, 'err')
-    }
+    const ok = await copyText(url)
+    toast(ok ? 'Site URL copied' : "Couldn't copy — the URL is " + url, ok ? 'ok' : 'info')
   }
 
   const askRemove = (site) => {

@@ -8,3 +8,4 @@ data/
 web/node_modules/
 web/dist/
 .shots*/
+.chrome-tmp*/

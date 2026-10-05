@@ -119,11 +119,12 @@ async function detectPython() {
   if (pythonBin !== null) return pythonBin;
   const tryBin = async (bin) => {
     try {
-      await execFileP(bin, ['--version'], { timeout: 2500 });
-      return true;
-    } catch (err) {
-      // ENOENT: not on PATH. Any other failure means the binary exists.
-      return err.code !== 'ENOENT';
+      const out = await execFileP(bin, ['--version'], { timeout: 2500 });
+      // Windows ships a fake python3 (Store alias) that exits non-zero with a
+      // 'Python was not found' pitch — only a real version string counts
+      return /Python \d/.test(String(out.stdout || '') + String(out.stderr || ''));
+    } catch {
+      return false;
     }
   };
   if (await tryBin('python3')) {
@@ -195,12 +196,11 @@ async function attemptRun(task, { force = false } = {}) {
       ms: 0,
       error: `Battery mode — phone on battery at ${level}%. Will run when charging.`,
     };
-    task.lastRunAttemptAt = now;
+    task.lastDeferredAt = now;
     task.lastStatus = 'deferred';
-    task.lastRunAt = now;
     task.runs = [entry, ...(task.runs || [])].slice(0, MAX_RUNS);
     saveTasks(loadTasks().map((t) => (t.id === task.id ? task : t)));
-    return { ok: true, status: 'deferred', level, error: entry.error };
+    return { ok: false, deferred: true, status: 'deferred', level, error: entry.error };
   }
 
   const result = await runTaskCode(task.kind, task.code);
@@ -356,6 +356,7 @@ hookRouter.post('/:webhookId', async (req, res, next) => {
     inFlight.add(task.id);
     try {
       const out = await attemptRun(task, {});
+      if (out.deferred) return res.status(202).json(out);
       return res.json(out);
     } finally {
       inFlight.delete(task.id);

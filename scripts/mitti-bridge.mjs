@@ -101,7 +101,12 @@ function timeAgo(iso) {
 
 const sendJson = (method, payload) => ({
   method,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    // when the cloud is locked, only the token opens writes — set MITTI_TOKEN
+    // to the value from Status → Security on the dashboard
+    ...(process.env.MITTI_TOKEN ? { 'x-mitti-token': process.env.MITTI_TOKEN } : {}),
+  },
   body: JSON.stringify(payload),
 });
 
@@ -115,9 +120,11 @@ function friendlyFetchError(err) {
 
 /** Fetch a bridge endpoint; throw a clear Error on non-200. */
 async function api(rel, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (process.env.MITTI_TOKEN) headers['x-mitti-token'] = process.env.MITTI_TOKEN;
   let res;
   try {
-    res = await fetch(API + rel, opts);
+    res = await fetch(API + rel, { ...opts, headers });
   } catch (err) {
     throw friendlyFetchError(err);
   }
@@ -132,6 +139,9 @@ async function api(rel, opts = {}) {
     const msg = (body && body.error) || bodyText.slice(0, 300) || res.statusText;
     const e = new Error(`HTTP ${res.status} — ${msg}`);
     e.status = res.status;
+    if (res.status === 401 && !process.env.MITTI_TOKEN) {
+      e.message += '\nThis cloud is locked — set MITTI_TOKEN to its access token first.';
+    }
     throw e;
   }
   return body;

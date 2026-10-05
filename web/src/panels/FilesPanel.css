@@ -353,12 +353,16 @@
     grid-template-columns: auto minmax(0, 1fr) 64px auto;
   }
   .fl-actions {
-    gap: 4px;
+    gap: 6px;
   }
+  /* touch targets stay thumb-sized even on the smallest phone */
   .fl-actions .iconbtn {
-    width: 30px;
-    min-height: 30px;
-    border-radius: 8px;
+    width: 36px;
+    min-height: 36px;
+    border-radius: 9px;
+  }
+  .fl-actions .iconbtn:last-child {
+    margin-left: 2px;
   }
   .fl-search-input {
     width: 150px;

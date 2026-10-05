@@ -203,3 +203,26 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
+
+/* on a phone the rail moves below the chat and the chat goes full width —
+   this selector is more specific than the base .agent media rule, so it has
+   to repeat the collapse here or the setup screen stays squeezed */
+@media (max-width: 760px) {
+  .rp-body .agent {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .rp-body .agent > .agent-side {
+    order: 2;
+    max-height: 240px;
+  }
+  .rp-body .agent > .agent-main {
+    order: 1;
+  }
+  .ag-setup {
+    padding: 16px 14px;
+  }
+  .ag-setup h2 {
+    font-size: 19px;
+  }
+}

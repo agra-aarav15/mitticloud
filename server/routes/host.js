@@ -47,14 +47,17 @@ function pushLog(line) {
 
 function tunnelStatus() {
   if (!tunnel) return { running: false, mode: null, url: null, log: [] };
-  const alive = tunnel.child.exitCode === null;
+  const alive = tunnel.child.exitCode === null && !tunnel.failed;
   return {
     running: alive,
     mode: tunnel.mode,
     url: tunnel.url || null,
     startedAt: tunnel.startedAt,
     log: tunnel.log.slice(-12),
-    ...(alive ? {} : { exitCode: tunnel.child.exitCode }),
+    ...(tunnel.failed ? { failed: tunnel.failed } : {}),
+    ...(tunnel.child.exitCode !== null && !tunnel.failed
+      ? { exitCode: tunnel.child.exitCode }
+      : {}),
   };
 }
 
@@ -63,8 +66,16 @@ function startCloudflared(bin, args, mode) {
   if (!/^[a-z0-9_\-.:\\\/() ]+$/i.test(bin)) {
     throw Object.assign(new Error('cloudflared path looks wrong — use a plain path or "cloudflared"'), { status: 400 });
   }
-  const child = spawn(bin, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  tunnel = { mode, child, url: null, startedAt: new Date().toISOString(), log: [] };
+  let child;
+  try {
+    child = spawn(bin, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    // missing binary throws synchronously — surface it as a failed tunnel,
+    // not a 500 the UI cannot render
+    tunnel = { mode, child: { exitCode: 1 }, url: null, startedAt: new Date().toISOString(), log: [], failed: err.message };
+    return null;
+  }
+  tunnel = { mode, child, url: null, startedAt: new Date().toISOString(), log: [], failed: null };
   const onData = (buf) =>
     String(buf)
       .split(/\r?\n/)
@@ -72,7 +83,12 @@ function startCloudflared(bin, args, mode) {
       .forEach(pushLog);
   child.stdout.on('data', onData);
   child.stderr.on('data', onData);
-  child.on('error', (err) => pushLog(`[cloudflared could not start: ${err.message}]`));
+  // a failed spawn fires 'error' but never 'exit' — without this the tunnel
+  // reports "running" forever while nothing exists
+  child.on('error', (err) => {
+    if (tunnel) tunnel.failed = err.message;
+    pushLog(`[cloudflared could not start: ${err.message}]`);
+  });
   child.on('exit', (code) => pushLog(`[cloudflared exited with code ${code}]`));
   return child;
 }

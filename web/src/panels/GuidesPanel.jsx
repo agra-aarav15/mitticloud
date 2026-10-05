@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
 import { GUIDE_STEPS } from '../guides.js'
-import { fetchStatus, fetchTasks, toast } from '../api.js'
+import { fetchStatus, fetchTasks, toast, copyText as copyTextShared } from '../api.js'
 import './GuidesPanel.css'
 
 const POLL_MS = 30000
@@ -34,12 +34,8 @@ function computePass(status, tasks, sites, sessions) {
 }
 
 async function copyText(text, msg) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast(msg || 'Copied', 'ok')
-  } catch {
-    toast('Could not copy — ' + text, 'err')
-  }
+  const ok = await copyTextShared(text)
+  toast(ok ? msg || 'Copied' : "Couldn't copy — the text is " + text, ok ? 'ok' : 'info')
 }
 
 export default function GuidesPanel({ onGoTo }) {
@@ -207,6 +203,8 @@ export default function GuidesPanel({ onGoTo }) {
                 )}
               </div>
 
+              {isPass && s.passNote && <div className="gd-passnote muted">{s.passNote}</div>}
+
               {s.id === 'lan' && (
                 <div className="gd-urls">
                   {lanUrls.length === 0 && (
@@ -229,7 +227,7 @@ export default function GuidesPanel({ onGoTo }) {
                         aria-label={'Copy ' + u}
                         title="Copy URL"
                       >
-                        <Icon name="upload" size={14} />
+                        <Icon name="copy" size={14} />
                       </button>
                     </div>
                   ))}

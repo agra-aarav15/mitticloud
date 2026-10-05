@@ -25,14 +25,22 @@ function Toasts() {
     () =>
       onToast((t) => {
         setItems((xs) => [...xs, t])
-        setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== t.id)), 4000)
+        // errors stick around long enough to read; everything else is quick
+        const life = t.type === 'err' ? 9000 : 4000
+        setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== t.id)), life)
       }),
     []
   )
+  const dismiss = (id) => setItems((xs) => xs.filter((x) => x.id !== id))
   return (
     <div className="toastwrap" role="status" aria-live="polite">
       {items.map((t) => (
-        <div key={t.id} className={'toast ' + (t.type === 'err' ? 'err' : t.type === 'ok' ? 'ok' : '')}>
+        <div
+          key={t.id}
+          className={'toast ' + (t.type === 'err' ? 'err' : t.type === 'ok' ? 'ok' : '')}
+          onClick={() => dismiss(t.id)}
+          title="Tap to dismiss"
+        >
           {t.msg}
         </div>
       ))}
@@ -101,7 +109,7 @@ export default function App() {
         </main>
 
         <footer className="foot muted">
-          MittiCloud · free &amp; open source · runs on the phone in your drawer · v0.11.0
+          MittiCloud · free &amp; open source · runs on the phone in your drawer · v0.12.0
         </footer>
       </div>
       <Toasts />

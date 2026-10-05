@@ -139,8 +139,24 @@ router.post('/cli/install', async (req, res, next) => {
     if (!preset || !preset.install) {
       return res.status(400).json({ error: 'That preset has nothing to install' });
     }
-    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    const child = spawn(npmBin, ['i', '-g', preset.pkg], { windowsHide: true });
+    let child;
+    try {
+      if (process.platform === 'win32') {
+        // npm is a .cmd shim — only cmd.exe can run it (spawn EINVAL otherwise);
+        // the tail goes out verbatim-quoted, same construction as Node's shell mode
+        child = spawn(
+          'cmd.exe',
+          ['/d', '/s', '/c', `"npm i -g ${preset.pkg}"`],
+          { windowsHide: true, windowsVerbatimArguments: true }
+        );
+      } else {
+        child = spawn('npm', ['i', '-g', preset.pkg], { windowsHide: true });
+      }
+    } catch (spawnErr) {
+      return res.status(500).json({
+        error: 'Could not start npm on this device: ' + spawnErr.message,
+      });
+    }
     installing = { presetId: preset.id, startedAt: new Date().toISOString(), log: [] };
     const push = (buf) => {
       for (const line of String(buf).split(/\r?\n/).filter((l) => l.trim())) {
@@ -150,7 +166,14 @@ router.post('/cli/install', async (req, res, next) => {
     };
     child.stdout.on('data', push);
     child.stderr.on('data', push);
-    child.on('error', (err) => installing && installing.log.push('npm failed: ' + err.message));
+    child.on('error', (err) => {
+      if (!installing) return;
+      installing.log.push('npm failed: ' + err.message);
+      installing.log.push('[install could not start]');
+      setTimeout(() => {
+        installing = null;
+      }, 2000);
+    });
     child.on('close', (code) => {
       if (installing) installing.log.push(`[npm exited with code ${code}]`);
       setTimeout(() => {
@@ -228,6 +251,30 @@ router.post('/sessions', async (req, res, next) => {
 router.get('/sessions/:id', (req, res) => {
   const s = loadSession(req.params.id);
   if (!s) return res.status(404).json({ error: 'No such session' });
+  res.json(sessionView(s));
+});
+
+// PATCH /sessions/:id — keep a dead preset from trapping the user: endpoint,
+// model and title stay editable for the life of the session.
+router.patch('/sessions/:id', (req, res) => {
+  const s = loadSession(req.params.id);
+  if (!s) return res.status(404).json({ error: 'No such session' });
+  if (s.running || running.has(s.id)) {
+    return res.status(409).json({ error: 'Session is running — wait for it to finish' });
+  }
+  const body = req.body || {};
+  if (body.endpoint !== undefined) {
+    s.endpoint =
+      typeof body.endpoint === 'string' && body.endpoint.trim() ? body.endpoint.trim() : null;
+  }
+  if (body.model !== undefined) {
+    s.model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : null;
+  }
+  if (typeof body.title === 'string' && body.title.trim()) {
+    s.title = body.title.trim().slice(0, 120);
+  }
+  s.updatedAt = new Date().toISOString();
+  saveSession(s);
   res.json(sessionView(s));
 });
 

@@ -126,6 +126,17 @@
   opacity: 1;
   transform: none;
 }
+/* touch devices have no hover — the controls must simply be there */
+@media (hover: none) {
+  .ph-del,
+  .ph-star {
+    opacity: 0.55;
+    transform: none;
+  }
+  .ph-star.is-fav {
+    opacity: 1;
+  }
+}
 
 /* Favorite star: top-left twin of the delete button; filled when favorite.
    CSS fill overrides the icon's fill="none" presentation attribute. */

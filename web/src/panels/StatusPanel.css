@@ -273,3 +273,14 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* inline retry link inside an honest error line */
+.st-linkbtn {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: #fafafa;
+  text-decoration: underline;
+  cursor: pointer;
+}

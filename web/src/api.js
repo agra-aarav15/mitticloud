@@ -22,29 +22,8 @@ async function j(res) {
 export const fetchStatus = () => fetch('/api/status').then(j)
 export const fetchPhotos = () => fetch('/api/photos').then(j).then((d) => d.photos)
 
-export async function uploadPhotos(files) {
-  const fd = new FormData()
-  for (const f of files) fd.append('photos', f)
-  return fetch('/api/photos/upload', { method: 'POST', body: fd }).then(j)
-}
-
-export const deletePhoto = (path) =>
-  fetch('/api/photos?path=' + encodeURIComponent(path), { method: 'DELETE' }).then(j)
-
 export const listFiles = (path = '') =>
   fetch('/api/files?path=' + encodeURIComponent(path)).then(j)
-
-export const mkdir = (path) =>
-  fetch('/api/files/mkdir', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path })
-  }).then(j)
-
-export const deleteFile = (path, force = false) =>
-  fetch('/api/files?path=' + encodeURIComponent(path) + (force ? '&force=true' : ''), {
-    method: 'DELETE'
-  }).then(j)
 
 export const downloadUrl = (path) => '/api/files/download?path=' + encodeURIComponent(path)
 
@@ -80,6 +59,38 @@ export const deleteAgentSession = (id) =>
     method: 'DELETE',
     headers: tokenHeaders()
   }).then(j)
+export const updateAgentSession = (id, patch) =>
+  fetch('/api/agent/sessions/' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(patch)
+  }).then(j)
+
+// Copy that tells the truth: the dashboard is usually opened over http://LAN
+// where navigator.clipboard does not exist — fall back to execCommand and
+// report what actually happened.
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    /* no clipboard API (insecure context) — try the old way */
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    return ok
+  } catch {
+    return false
+  }
+}
 
 // --- CLI agent brains (real agents, running on this device) ---
 
@@ -167,6 +178,12 @@ export const fetchTaskRuns = (id) =>
 
 export const webhookPath = (webhookId) => '/hook/' + webhookId
 export const webhookUrl = (webhookId) => window.location.origin + webhookPath(webhookId)
+
+// --- deep health + backups ---
+
+export const fetchDeepHealth = () => fetch('/api/health?deep=1').then(j)
+export const runBackupNow = () =>
+  fetch('/api/backup/run', { method: 'POST', headers: tokenHeaders() }).then(j)
 
 export function humanizeBytes(n) {
   if (n == null) return '—'

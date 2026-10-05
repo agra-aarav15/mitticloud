@@ -63,6 +63,7 @@ export default function AgentPanel() {
   const [keyDraft, setKeyDraft] = useState('')
   const [text, setText] = useState('')
   const [gate, setGate] = useState(null)
+  const [confirmDel, setConfirmDel] = useState(null)
   const [busy, setBusy] = useState(false)
   const threadRef = useRef(null)
 
@@ -95,6 +96,23 @@ export default function AgentPanel() {
     fetchAgentWorkspaces().then(setWorkspaces).catch(() => {})
     fetchHostLan().then((d) => setLanUrls(d.urls || [])).catch(() => {})
   }, [refreshProviders, refreshSessions, refreshCli])
+
+  // Home's command box hands its session over through localStorage — open it
+  // live instead of stranding the user on the setup screen
+  useEffect(() => {
+    let handoff = null
+    try {
+      handoff = localStorage.getItem('mitti_open_session')
+      localStorage.removeItem('mitti_open_session')
+    } catch {
+      /* private mode */
+    }
+    if (handoff) {
+      setActiveId(handoff)
+      setSetupOpen(false)
+      loadActive(handoff)
+    }
+  }, [loadActive])
 
   // poll while the agent is working so every line lands live
   const running = active && active.running
@@ -247,27 +265,30 @@ export default function AgentPanel() {
         <div className="ag-list">
           {sessions.length === 0 && <div className="ag-none muted">No sessions yet</div>}
           {sessions.map((s) => (
-            <button
-              key={s.id}
-              className={'ag-item' + (s.id === activeId ? ' active' : '')}
-              onClick={() => openSession(s.id)}
-            >
-              <span className="ag-title">{s.title}</span>
-              <span className="ag-meta">
-                {s.engine === 'cli' ? (s.cliLabel || 'CLI') + ' · CLI' : s.providerId}
-                {s.running ? ' · working' : ''}
-              </span>
+            <div key={s.id} className={'ag-item' + (s.id === activeId ? ' active' : '')}>
+              <button className="ag-main" onClick={() => openSession(s.id)}>
+                <span className="ag-title">{s.title}</span>
+                <span className="ag-meta">
+                  {s.engine === 'cli' ? (s.cliLabel || 'CLI') + ' · CLI' : s.providerId}
+                  {s.running ? ' · working' : ''}
+                </span>
+              </button>
               <button
-                className="ag-del"
-                aria-label="Delete session"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeSession(s.id)
+                className={'ag-del' + (confirmDel === s.id ? ' sure' : '')}
+                aria-label={'Delete session ' + s.title}
+                onClick={() => {
+                  if (confirmDel === s.id) {
+                    removeSession(s.id)
+                    setConfirmDel(null)
+                  } else {
+                    setConfirmDel(s.id)
+                    setTimeout(() => setConfirmDel((c) => (c === s.id ? null : c)), 3500)
+                  }
                 }}
               >
-                <Icon name="trash" size={13} />
+                {confirmDel === s.id ? 'Sure?' : <Icon name="trash" size={13} />}
               </button>
-            </button>
+            </div>
           ))}
         </div>
         <div className="ag-247">
@@ -314,6 +335,12 @@ export default function AgentPanel() {
             {engine === 'cli' && cli && (
               <div className="ag-tray">
                 <div className="ag-free muted">{cli.note}</div>
+                {cli.installed && cli.id !== 'custom' && (
+                  <div className="ag-free muted">
+                    Installed. The first message may ask you to sign in — the CLI's own words show
+                    up right in the chat, and one run on this device signs it in for good.
+                  </div>
+                )}
                 {cli.id !== 'custom' && !cli.installed && (
                   <div className="ag-keyrow">
                     <span className="muted ag-install-hint">{cli.install}</span>
@@ -351,6 +378,10 @@ export default function AgentPanel() {
                   onClick={() => {
                     setEngine('brain')
                     setNewProvider(p.id)
+                    // the preset's endpoint/model come prefilled — every part
+                    // stays editable, so a dead preset never traps anyone
+                    setNewEndpoint(p.endpoint || '')
+                    setNewModel(p.model || '')
                   }}
                 >
                   <span className="ag-prov-name">{p.label}</span>
@@ -372,6 +403,22 @@ export default function AgentPanel() {
                       </a>
                     </>
                   )}
+                </div>
+                <div className="ag-keyrow">
+                  <input
+                    placeholder="Base URL — like https://openrouter.ai/api/v1"
+                    value={newEndpoint}
+                    onChange={(e) => setNewEndpoint(e.target.value)}
+                    aria-label="Base URL of the OpenAI-compatible endpoint"
+                  />
+                </div>
+                <div className="ag-keyrow">
+                  <input
+                    placeholder="Model name — like llama-3.3-70b"
+                    value={newModel}
+                    onChange={(e) => setNewModel(e.target.value)}
+                    aria-label="Model name"
+                  />
                 </div>
                 <div className="ag-keyrow">
                   <input
@@ -400,11 +447,18 @@ export default function AgentPanel() {
                   </option>
                 ))}
               </select>
-              <button className="btn btn-primary" disabled={busy} onClick={createSession}>
+              <button
+                className="btn btn-primary"
+                disabled={busy || (engine === 'brain' && sel && sel.id === 'custom' && (!newEndpoint.trim() || !newModel.trim()))}
+                onClick={createSession}
+              >
                 {busy && <span className="spin" aria-hidden="true" />}
                 Start session
               </button>
             </div>
+            {engine === 'brain' && sel && sel.id === 'custom' && (!newEndpoint.trim() || !newModel.trim()) && (
+              <div className="muted ag-free">A custom brain needs a Base URL and a model name — the key too, saved above.</div>
+            )}
           </div>
         ) : (
           <>
@@ -471,12 +525,11 @@ export default function AgentPanel() {
                 placeholder={
                   active && active.running
                     ? isCliSession
-                      ? 'The CLI agent is working…'
-                      : 'The agent is working…'
+                      ? 'The CLI agent is working… you can draft the next line meanwhile'
+                      : 'The agent is working… you can draft the next line meanwhile'
                     : 'Tell the agent what to do'
                 }
                 value={text}
-                disabled={busy || (active && active.running)}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {

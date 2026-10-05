@@ -210,6 +210,17 @@ export default function HomePanel({ onGoTo }) {
       setJob('')
       return
     }
+    if (CLOUD_RE.test(t.toLowerCase())) {
+      // it asked about the cloud, the numbers were reloaded, and the cloud
+      // still can't answer — say so instead of dumping the question on the agent
+      setAnswer({
+        q: t,
+        lines: ["I can't read that right now — open Status for the live numbers."],
+        tab: 'status'
+      })
+      setJob('')
+      return
+    }
     setBusy(true)
     try {
       const sessions = await fetchAgentSessions()
@@ -228,6 +239,11 @@ export default function HomePanel({ onGoTo }) {
       }
       const out = await sendAgentMessage(s.id, t)
       if (out.batteryMode) toast(out.message, 'info')
+      try {
+        localStorage.setItem('mitti_open_session', s.id)
+      } catch {
+        /* private mode */
+      }
       onGoTo('remote')
     } catch (err) {
       toast(err.message, 'err')

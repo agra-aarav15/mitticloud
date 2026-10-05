@@ -232,3 +232,10 @@
 .gd-sk-line {
   height: 14px;
 }
+
+/* earned note on a passed step — proof, not decoration */
+.gd-passnote {
+  font-size: 12.5px;
+  padding: 4px 0 0 30px;
+  line-height: 1.5;
+}

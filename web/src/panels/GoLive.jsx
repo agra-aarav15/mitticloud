@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { toast } from '../api.js'
+import { toast, copyText } from '../api.js'
 import {
   fetchHostLan,
   fetchTunnel,
@@ -40,7 +40,11 @@ function CloudflareStep({ sites, site }) {
           setAccountId((cur) => cur || d.accounts[0].id)
         }
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (!alive.current) return
+        // a failed status call is a dead end, not an eternal "Checking..."
+        setCf({ connected: false, error: err.message || 'status unavailable' })
+      })
   }, [])
 
   useEffect(() => {
@@ -90,13 +94,9 @@ function CloudflareStep({ sites, site }) {
     }
   }
 
-  const copy = async (text, label) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast(label + ' copied', 'ok')
-    } catch {
-      toast('Could not copy', 'err')
-    }
+const copy = async (text, label) => {
+    const ok = await copyText(text)
+    toast(ok ? label + ' copied' : "Couldn't copy — select the text and copy it manually", ok ? 'ok' : 'info')
   }
 
   if (cf === null) return <span className="muted">Checking Cloudflare…</span>
@@ -118,10 +118,15 @@ function CloudflareStep({ sites, site }) {
             onChange={(e) => setTokenDraft(e.target.value)}
           />
           <button className="btn btn-primary" disabled={busy || !tokenDraft.trim()} onClick={connect}>
+            {busy && <span className="spin" aria-hidden="true" />}
             Connect
           </button>
         </div>
-        {cf.error && <p className="muted golive-err">Last attempt failed — {cf.error}</p>}
+        {cf.error && (
+          <p className="muted golive-err">
+            Couldn't read Cloudflare status — {cf.error}. <button className="golive-retry" onClick={refresh}>Retry</button>
+          </p>
+        )}
       </div>
     )
   }
@@ -179,8 +184,12 @@ export default function GoLive({ sites }) {
 
   useEffect(() => {
     alive.current = true
-    fetchHostLan().then((d) => alive.current && setLan(d)).catch(() => {})
-    fetchTunnel().then((d) => alive.current && setTunnel(d)).catch(() => {})
+    fetchHostLan()
+      .then((d) => alive.current && setLan({ ...d, failed: false }))
+      .catch(() => alive.current && setLan({ urls: [], failed: true }))
+    fetchTunnel()
+      .then((d) => alive.current && setTunnel(d))
+      .catch(() => {})
     return () => {
       alive.current = false
     }
@@ -200,12 +209,8 @@ export default function GoLive({ sites }) {
   const sitePath = site ? '/s/' + site + '/' : '/'
 
   const copy = async (text, label) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast(label + ' copied', 'ok')
-    } catch {
-      toast('Could not copy', 'err')
-    }
+    const ok = await copyText(text)
+    toast(ok ? label + ' copied' : "Couldn't copy — select the text and copy it manually", ok ? 'ok' : 'info')
   }
 
   const doQuick = async () => {
@@ -214,6 +219,8 @@ export default function GoLive({ sites }) {
       const d = await startQuickTunnel(bin.trim() || undefined)
       setTunnel(d)
       if (d.url) toast('Public URL is live', 'ok')
+      else if (d.failed || d.exitCode !== undefined)
+        toast('cloudflared could not start — is it installed and on PATH?', 'err')
       else toast('cloudflared is starting — the URL appears in a few seconds', 'info')
     } catch (err) {
       toast(err.message, 'err')
@@ -228,7 +235,8 @@ export default function GoLive({ sites }) {
       const d = await startTokenTunnel(token.trim(), bin.trim() || undefined)
       setTunnel(d)
       setToken('')
-      toast('Token tunnel running — your dashboard hostname now points here', 'ok')
+      if (d.running) toast('Token tunnel running — your dashboard hostname now points here', 'ok')
+      else toast('cloudflared exited — check the log below (bad token or missing binary)', 'err')
     } catch (err) {
       toast(err.message, 'err')
     } finally {
@@ -306,6 +314,21 @@ export default function GoLive({ sites }) {
                 </button>
               ))}
             {!lan && <span className="muted">reading network…</span>}
+            {lan && lan.failed && (
+              <p className="muted golive-err">
+                Couldn't read the network addresses.{' '}
+                <button
+                  className="golive-retry"
+                  onClick={() =>
+                    fetchHostLan()
+                      .then((d) => setLan({ ...d, failed: false }))
+                      .catch(() => setLan({ urls: [], failed: true }))
+                  }
+                >
+                  Retry
+                </button>
+              </p>
+            )}
           </div>
 
           <div className="golive-step">
@@ -340,8 +363,13 @@ export default function GoLive({ sites }) {
                       <span>{tunnel.url}</span>
                       <Icon name="copy" size={13} />
                     </button>
-                  ) : tunnel.mode === 'quick' ? (
-                    <span className="muted">Requesting a public URL from Cloudflare…</span>
+) : tunnel.mode === 'quick' ? (
+                    <span className="muted">
+                      Requesting a public URL from Cloudflare…
+                      {tunnel.log && tunnel.log.length > 0 && (
+                        <span className="golive-err"> {tunnel.log[tunnel.log.length - 1]}</span>
+                      )}
+                    </span>
                   ) : (
                     <span className="golive-live-chip">TUNNEL RUNNING</span>
                   )}
@@ -377,7 +405,8 @@ export default function GoLive({ sites }) {
               Measured on this device; real visitors add only their own Wi-Fi hop.
             </p>
             <button className="btn btn-primary" disabled={busy} onClick={doLoad}>
-              <Icon name="bolt" size={15} /> Send 200 visitors
+              {busy ? <span className="spin" aria-hidden="true" /> : <Icon name="bolt" size={15} />}
+              {busy ? 'Firing visitors…' : 'Send 200 visitors'}
             </button>
             {load && (
               <div className="golive-load">

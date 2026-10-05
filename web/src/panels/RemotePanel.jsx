@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { toast, timeAgo, humanizeBytes, tokenHeaders } from '../api.js'
+import { toast, timeAgo, humanizeBytes, tokenHeaders, copyText } from '../api.js'
 import AgentPanel from './AgentPanel.jsx'
 import './RemotePanel.css'
 
@@ -233,9 +233,14 @@ function ProjectMemory() {
     try {
       setProgress('Loading context and chat…')
       const text = await resumeSession(s.id)
-      setResumed(text)
-      await navigator.clipboard.writeText(text).catch(() => {})
-      toast('Copied — paste it into your agent', 'ok')
+      setResumed({ id: s.id, text })
+      const copied = await copyText(text)
+      toast(
+        copied
+          ? 'Copied — paste it into your agent'
+          : "Couldn't copy — long-press the box below to copy it",
+        copied ? 'ok' : 'info'
+      )
     } catch (err) {
       toast(err.message, 'err')
     } finally {
@@ -347,8 +352,8 @@ function ProjectMemory() {
                 <Icon name="file" size={14} /> New chat
               </button>
             </div>
-            {resumed && (
-              <pre className="rp-pre">{resumed}</pre>
+            {resumed && resumed.id === s.id && (
+              <pre className="rp-pre">{resumed.text}</pre>
             )}
           </section>
         ))
@@ -365,9 +370,16 @@ const SEGMENTS = [
 
 export default function RemotePanel() {
   const [seg, setSeg] = useState(() => {
+    // a job sent from Home's command box lands in the agent — open on it
+    let handoff = false
+    try {
+      handoff = Boolean(localStorage.getItem('mitti_open_session'))
+    } catch {
+      /* private mode */
+    }
     try {
       const s = localStorage.getItem(SEG_KEY)
-      return SEGMENTS.some((x) => x.id === s) ? s : 'phone'
+      return handoff || !SEGMENTS.some((x) => x.id === s) ? 'phone' : s
     } catch {
       return 'phone'
     }

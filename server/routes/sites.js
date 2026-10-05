@@ -160,7 +160,9 @@ apiRouter.post('/:name/files', express.json({ limit: MAX_UPLOAD_BODY }), async (
       return res.status(400).json({ error: 'files must be a non-empty array of {path, contentBase64}' });
     }
 
-    let written = 0;
+    // validate every file BEFORE writing any — an oversized file late in the
+    // batch must not leave a half-published site behind
+    const staged = [];
     let totalBytes = 0;
     for (const f of files) {
       const rel = typeof f?.path === 'string' ? f.path.trim().replace(/\\/g, '/') : '';
@@ -182,11 +184,13 @@ apiRouter.post('/:name/files', express.json({ limit: MAX_UPLOAD_BODY }), async (
         return res.status(413).json({ error: 'Upload too large (max 25 MB per request)' });
       }
       const abs = resolveSafe(rel, siteDir); // throws PathError on escape
+      staged.push({ abs, data });
+    }
+    for (const { abs, data } of staged) {
       await fsp.mkdir(path.dirname(abs), { recursive: true });
       await fsp.writeFile(abs, data);
-      written++;
     }
-    res.json({ written, site: name });
+    res.json({ written: staged.length, site: name });
   } catch (err) {
     next(err);
   }
@@ -206,30 +210,20 @@ apiRouter.get('/:name/usage', async (req, res, next) => {
   }
 });
 
-// POST /:name/zip — replace a site's whole folder with a ZIP archive
-// (multipart form field "zip", memory storage, capped at 25 MB). Every entry
-// path is sanitized (relative, no '..') and pre-resolved through resolveSafe
-// BEFORE the old site is touched, so a rejected upload never wipes anything.
 apiRouter.post('/:name/zip', uploadZip.single('zip'), async (req, res, next) => {
   try {
     const name = req.params.name;
     if (!isSiteName(name)) return res.status(404).json({ error: 'Site not found: ' + name });
-    const siteDir = path.join(SITES_DIR, name);
-    const registry = loadRegistry();
-    if (!registry.some((s) => s.name === name)) {
-      // auto-create: a ZIP upload is as good as a create call
-      ensureSitesDir();
-      const site = { name, createdAt: new Date().toISOString() };
-      saveRegistry([...registry, site]);
-      await fsp.mkdir(siteDir, { recursive: true });
-    }
     if (!req.file || !Buffer.isBuffer(req.file.buffer)) {
+      // checked BEFORE anything is created — a bad upload must not leave an
+      // empty site behind
       return res.status(400).json({ error: 'Send the archive as multipart form field "zip"' });
     }
+    const siteDir = path.join(SITES_DIR, name);
 
     let entries;
     try {
-      entries = zipRead(req.file.buffer); // skips directory entries itself
+      entries = zipRead(req.file.buffer); // zip-bomb cap lives in zipRead
     } catch (err) {
       return res.status(400).json({ error: 'Not a readable ZIP file: ' + err.message });
     }
@@ -240,18 +234,52 @@ apiRouter.post('/:name/zip', uploadZip.single('zip'), async (req, res, next) => 
       if (!rel || rel.startsWith('/') || rel.split('/').some((seg) => seg === '..')) {
         return res.status(400).json({ error: 'Unsafe path in ZIP: ' + e.path });
       }
-      const abs = resolveSafe(rel, siteDir); // throws PathError on escape
-      planned.push({ abs, data: e.data });
+      planned.push({ rel, data: e.data });
+    }
+    if (planned.length === 0) {
+      return res.status(400).json({ error: 'The archive holds no files' });
     }
 
-    // all entries validated — now (and only now) replace the site contents
-    await fsp.rm(siteDir, { recursive: true, force: true });
-    await fsp.mkdir(siteDir, { recursive: true });
-    for (const { abs, data } of planned) {
-      await fsp.mkdir(path.dirname(abs), { recursive: true });
-      await fsp.writeFile(abs, data);
+    // GitHub-style archives nest the whole site under one top folder
+    // ("repo-main/index.html") — unwrap it so index.html lands at the site
+    // root and /s/<name>/ actually serves. Mirrors the folder-upload behavior.
+    let unwrapped = null;
+    const first = planned[0].rel.split('/')[0];
+    if (first && planned.every((p) => p.rel.startsWith(first + '/'))) {
+      for (const p of planned) p.rel = p.rel.slice(first.length + 1);
+      unwrapped = first;
     }
-    res.json({ ok: true, site: name, files: planned.length });
+
+    for (const p of planned) {
+      try {
+        resolveSafe(p.rel, siteDir); // containment check (throws PathError on escape)
+      } catch {
+        return res.status(400).json({ error: 'Unsafe path in ZIP: ' + p.rel });
+      }
+    }
+
+    // all entries validated — stage into a sibling folder, then swap: the old
+    // site stays intact until the new one is fully on disk
+    const stageDir = siteDir + '.staging';
+    const oldDir = siteDir + '.previous';
+    await fsp.rm(stageDir, { recursive: true, force: true });
+    await fsp.rm(oldDir, { recursive: true, force: true });
+    for (const p of planned) {
+      const abs = path.join(stageDir, p.rel);
+      await fsp.mkdir(path.dirname(abs), { recursive: true });
+      await fsp.writeFile(abs, p.data);
+    }
+    const registry = loadRegistry();
+    if (!registry.some((s) => s.name === name)) {
+      ensureSitesDir();
+      saveRegistry([...registry, { name, createdAt: new Date().toISOString() }]);
+    }
+    await fsp.mkdir(SITES_DIR, { recursive: true });
+    await fsp.rename(siteDir, oldDir).catch(() => {});
+    await fsp.rename(stageDir, siteDir);
+    await fsp.rm(oldDir, { recursive: true, force: true });
+
+    res.json({ ok: true, site: name, files: planned.length, unwrapped });
   } catch (err) {
     next(err);
   }
@@ -288,10 +316,23 @@ const CONTENT_TYPES = {
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
+  '.avif': 'image/avif',
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.pdf': 'application/pdf',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 const esc = (s) =>

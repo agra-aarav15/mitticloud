@@ -102,9 +102,11 @@ export function zipWrite(entries) {
 /**
  * Read a ZIP archive.
  * @param {Buffer} buf
+ * @param {{maxInflatedBytes?: number}} opts — total uncompressed cap (zip-bomb guard)
  * @returns {Array<{path: string, data: Buffer}>} — entries sorted by name
  */
-export function zipRead(buf) {
+export function zipRead(buf, opts = {}) {
+  const maxInflated = opts.maxInflatedBytes || 100 * 1024 * 1024;
   // find End Of Central Directory (scan back over possible comment)
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65536); i--) {
@@ -117,17 +119,24 @@ export function zipRead(buf) {
 
   const count = buf.readUInt16LE(eocd + 10);
   let ptr = buf.readUInt32LE(eocd + 16);
+  let inflatedTotal = 0;
 
   const out = [];
   for (let i = 0; i < count; i++) {
     if (buf.readUInt32LE(ptr) !== 0x02014b50) throw new Error('Corrupt ZIP central directory');
     const method = buf.readUInt16LE(ptr + 10);
     const compSize = buf.readUInt32LE(ptr + 20);
+    const uncompSize = buf.readUInt32LE(ptr + 24);
     const nameLen = buf.readUInt16LE(ptr + 28);
     const extraLen = buf.readUInt16LE(ptr + 30);
     const commentLen = buf.readUInt16LE(ptr + 32);
     const localOffset = buf.readUInt32LE(ptr + 42);
     const name = buf.toString('utf8', ptr + 46, ptr + 46 + nameLen);
+
+    inflatedTotal += uncompSize;
+    if (inflatedTotal > maxInflated) {
+      throw new Error(`Archive inflates past ${Math.round(maxInflated / 1024 / 1024)} MB — refused`);
+    }
 
     // local header: sizes there can differ (streaming writers put 0 here)
     const l = localOffset;

@@ -68,9 +68,10 @@ Short version, if you still want it:
 
 - **Never port-forward 7333 on your router.** That puts your photo vault on
   the public internet, where scanners find it within hours.
-- **The dashboard has no login yet** (a simple auth token is on the v0.2
-  roadmap). Until then, treat any URL that isn't LAN-only or Tailscale as
-  unsafe.
+- **Turn on the Lock** (Status → Security) before any public URL: visitors can
+  then look but only a holder of the access token can change anything — writes,
+  agent turns and task runs all require it. Without the Lock, treat any URL that
+  isn't LAN-only or Tailscale as unsafe.
 - Tailscale (Option B) keeps the dashboard private by design: only devices
   signed in to your own account can reach it.
 - If you ever use Option C, turn on **Cloudflare Access** (an email-code login

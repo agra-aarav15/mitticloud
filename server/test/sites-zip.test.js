@@ -83,7 +83,10 @@ test('zip upload writes every entry and reports the file count', async () => {
     ])
   );
   assert.equal(status, 200);
-  assert.deepEqual(json, { ok: true, site: 'ziptest', files: 2 });
+  assert.equal(json.ok, true);
+  assert.equal(json.site, 'ziptest');
+  assert.equal(json.files, 2);
+  assert.equal(json.unwrapped, null, 'flat archives stay flat');
 });
 
 test('the uploaded site is served at /s/<name> and old content is gone', async () => {
@@ -104,11 +107,81 @@ test('a second upload replaces the site again (no stale index)', async () => {
     zipForm([{ path: 'about.html', data: '<p>version two</p>' }])
   );
   assert.equal(status, 200);
-  assert.deepEqual(json, { ok: true, site: 'ziptest', files: 1 });
+  assert.equal(json.files, 1);
   assert.equal((await api('GET', '/s/ziptest/')).status, 404, 'index.html is gone');
   const about = await api('GET', '/s/ziptest/about.html');
   assert.equal(about.status, 200);
   assert.ok(about.raw.includes('version two'));
+});
+
+test('a GitHub-style wrapper folder is unwrapped so /s/<name>/ serves index.html', async (t) => {
+  // the exact layout a "Download ZIP" from GitHub produces — the bug the
+  // owner hit with his real portfolio
+  const { status, json } = await api(
+    'POST',
+    '/api/sites/wrapped/zip',
+    zipForm([
+      { path: 'agra-aarav15.github.io-main/index.html', data: '<h1>portfolio live</h1>' },
+      { path: 'agra-aarav15.github.io-main/styles.css', data: 'body{background:#0a0a0a}' },
+      { path: 'agra-aarav15.github.io-main/projects/a.html', data: '<p>deep page</p>' },
+    ])
+  );
+  assert.equal(status, 200);
+  assert.equal(json.unwrapped, 'agra-aarav15.github.io-main');
+  const index = await api('GET', '/s/wrapped/');
+  assert.equal(index.status, 200, 'index.html now at the site root');
+  assert.ok(index.raw.includes('portfolio live'));
+  assert.equal((await api('GET', '/s/wrapped/projects/a.html')).status, 200);
+  assert.ok(!fs.existsSync(path.join(SITES_DIR, 'wrapped', 'agra-aarav15.github.io-main')));
+  t.after(async () => { await api('DELETE', '/api/sites/wrapped'); });
+});
+
+test('a zip whose entries do NOT share one root stays verbatim', async (t) => {
+  const { status, json } = await api(
+    'POST',
+    '/api/sites/mixed/zip',
+    zipForm([
+      { path: 'index.html', data: '<h1>root page</h1>' },
+      { path: 'docs/readme.md', data: '# docs' },
+    ])
+  );
+  assert.equal(status, 200);
+  assert.equal(json.unwrapped, null, 'index.html at root means nothing to unwrap');
+  assert.equal((await api('GET', '/s/mixed/')).status, 200);
+  t.after(async () => { await api('DELETE', '/api/sites/mixed'); });
+});
+
+test('a zip bomb that inflates past the cap is refused without wiping the site', async () => {
+  const big = Buffer.alloc(60 * 1024 * 1024, 0); // zeros deflate ~1000:1
+  const fd = new FormData();
+  fd.append(
+    'zip',
+    new Blob([
+      zipWrite([
+        { path: 'a.bin', data: big },
+        { path: 'b.bin', data: big },
+      ]),
+    ]),
+    'bomb.zip'
+  );
+  const before = await api('GET', '/s/ziptest/about.html');
+  const { status, json } = await api('POST', '/api/sites/ziptest/zip', fd);
+  assert.equal(status, 400);
+  assert.match(json.error, /inflates past/);
+  assert.equal((await api('GET', '/s/ziptest/about.html')).status, 200, 'site intact');
+  assert.equal(before.status, 200);
+});
+
+test('an upload with no zip field does not create a site', async () => {
+  const fd = new FormData();
+  fd.append('notzip', new Blob([Buffer.from('x')]), 'x.zip');
+  await api('POST', '/api/sites/no-site-created/zip', fd);
+  const list = await api('GET', '/api/sites');
+  assert.equal(
+    (list.json.sites || []).some((s) => s.name === 'no-site-created'),
+    false,
+    'rejected upload must not leave a registered site'
+  );
 });
 
 test('usage reports {bytes, files} for the current contents', async () => {

@@ -21,7 +21,7 @@
 - **Free-tier servers come and go.** Oracle's "always free" instances get reclaimed, credits expire, fine print changes. A drawer-phone never asks for a credit card and never sends you a bill.
 - **Half a billion phones are sleeping.** ~500 million old phones sit in drawers doing nothing while e-waste piles up. The most powerful computer you already own deserves better than a junk drawer.
 
-## What you get in v0.10
+## What you get in v0.12
 
 | Feature | What it does |
 |---|---|
@@ -37,7 +37,7 @@
 | 🔒 **Lock** | Optional one-token lock: visitors can look, only the token can change anything — including agent turns and task runs. |
 | 🗺️ **Living guides** | A checklist that reads real system state (Termux? Tailscale? first site? agent linked?) and ticks itself off — useful long after install. |
 | 🔋 **Battery mode** | Under 30% on battery, heavy work asks first: *"This could heat the phone — run anyway?"* Agent turns, tasks and scheduled jobs all follow the same law. |
-| 🛡️ **Robust** | Graceful restarts, daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1`, and a one-command test suite: `npm test` (92 checks). |
+| 🛡️ **Robust** | Graceful restarts, daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1`, and a one-command test suite: `npm test` (104 checks). |
 
 ## Quick Start (Termux)
 
@@ -99,7 +99,7 @@ npm start
 └─────────────────────────────────────────────┘
 ```
 
-No database, no CDN, no build step — a filesystem and vanilla JS. If your Wi-Fi is down, your cloud still works from your desk.
+No database, no CDN. The dashboard is a small React app built ahead of time into `public/` (committed, so `install.sh` needs no build); the server is plain Node with a filesystem. If your Wi-Fi is down, your cloud still works from your desk.
 
 ## Remote — project memory, on the phone
 
@@ -154,7 +154,7 @@ Built by **Aarav ([@agra-aarav15](https://github.com/agra-aarav15))** with a fle
 
 ---
 
-> **Note:** v0.10.0 — the phone now runs REAL agent CLIs (OpenCode / Gemini CLI / any command) behind the agent chat, Home got a one-box start ("give your cloud a job"), the design went calm-premium-plain everywhere, and MittiBadge lets any site show it is served from a drawer phone. Live screenshots in [`preview/`](preview/).
+> **Note:** v0.12.0 — the honesty round. Every flow that used to lie or dead-end now tells the truth: the CLI installer really installs (Windows `.cmd` spawn bug fixed) and a stuck agent stops with an actionable message instead of hanging forever; a GitHub-style ZIP finally unwraps its wrapper folder so `/s/<name>/` serves; the Custom brain has its Base URL and Model fields; automations got a real console (Run now, last output, webhook link); and the dashboard installs as a real phone app (PWA manifest + monochrome icons). 104 tests green. Live screenshots in [`preview/`](preview/).
 
 ## License
 

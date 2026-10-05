@@ -276,6 +276,7 @@ body {
   backdrop-filter: blur(16px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   animation: toast-in 0.25s ease;
+  cursor: pointer;
 }
 .toast.err {
   background: #fafafa;
@@ -469,5 +470,9 @@ body {
   }
   .foot {
     display: none;
+  }
+  /* toasts must clear the fixed bottom bar, not sit on top of the tabs */
+  .toastwrap {
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
 }
