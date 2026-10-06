@@ -21,23 +21,39 @@
 - **Free-tier servers come and go.** Oracle's "always free" instances get reclaimed, credits expire, fine print changes. A drawer-phone never asks for a credit card and never sends you a bill.
 - **Half a billion phones are sleeping.** ~500 million old phones sit in drawers doing nothing while e-waste piles up. The most powerful computer you already own deserves better than a junk drawer.
 
-## What you get in v0.12
+## What you get in v0.13
 
 | Feature | What it does |
 |---|---|
-| 🏠 **Home** | A lightweight start screen: one honest sentence from live data ("1 site live · 438 photos safe · agent idle · AC power"), four big ways to start, and what you touched last. |
-| 📊 **Live dashboard** | Real battery (or an honest "AC power — no battery"), real storage, uptime, Tailscale/LAN access info, deep health checks — at a glance, from any device. |
+| 🏠 **Home** | A lightweight start screen: one honest sentence from live data ("1 site live · 438 photos safe · agent idle · AC power"), four big ways to start, and what you touched last. No command box on purpose — jobs run in the agent, where they actually run. |
+| 📊 **Live dashboard** | Real battery (or an honest "AC power — no battery"), real storage, uptime, Tailscale/LAN access info, and a self-check in human words: "Storage is writable · Memory looks fine · Both sites responding · Backup: today 12:00" — internal check names never reach the screen. |
 | 🖼️ **Photo backup** | Bulk upload from any device, automatic duplicate detection, date albums, favorites, download-all as ZIP. |
-| 📁 **Real drive** | Upload files and folders (streaming — big files OK), rename, move, copy, multi-select delete, download a folder as ZIP, search, per-folder storage usage. |
+| 📁 **Real drive + editor** | Upload files and folders (streaming — big files OK), rename, move, copy, multi-select delete, folder ZIP download, search, per-folder usage — and now a real code editor: tap the `<>` icon on any text file and edit it right on the device (200 KB cap, binary files honestly refused, atomic saves). |
 | 🏅 **MittiBadge** | A live, embeddable badge proving a site runs on a drawer phone: visits today, uptime, power — real numbers, one `<img>` line, zero dependencies. Nothing like it exists. |
-| 🌐 **MittiHost + Publish** | Host real websites from the phone — upload a folder or ZIP, test on LAN, then **Publish to Cloudflare**: your own domain, free forever, never sleeps (Pages direct upload, zero dependencies — the cfn experience). Quick tunnel stays for instant previews; a 200-visitor load test proves it. |
-| 🤖 **CLI Agent Server** | A REAL lightweight agent CLI (OpenCode, Gemini CLI, or any command you paste) runs on the phone — Claude-Code-class, with its own tools — and MittiCloud is its 24/7 body: chat drives it, real output streams into the session, the watchdog revives it, the battery asks before heavy work. API-model brains stay available too. One-tap installer. |
-| ⚡ **Automations** | Flip ready-made switches — nightly server health, weekly storage report, website uptime watch — and they just run on schedule, battery-aware. The engine also gives every job a secret link (`POST /hook/<id>`). |
-| 🛰️ **Remote** | One tab for every agent: this phone's 24/7 agent, your laptop's ZCode via its built-in **Web Remote Control** (paste the link once, open it in one tap), and **project memory** — context + files stored on the phone, resumable anywhere (`scripts/mitti-bridge.mjs`). |
-| 🔒 **Lock** | Optional one-token lock: visitors can look, only the token can change anything — including agent turns and task runs. |
+| 🌐 **MittiHost** | Websites AND live apps. One add flow — pick a folder or ZIP, the name fills itself, the type is detected (website vs Node app). Publishing ends with a real live moment: "portfolio is live." with Open / Copy / Share. Site cards show a live dot (a real server-side check), the full link, an inline preview, Update, per-site Publish to Cloudflare (token stored on-device only), and share-sheet sharing on phones. Tools (LAN links, tunnels, load test) live under Advanced so the cards stay the story. |
+| ⚙️ **Live apps** | Host a real Node.js backend on the phone: it gets its own port (7401+), `PORT` in its environment, packages auto-installed from package.json (live log, 5-minute cap), a state chip (starting/running/stopped/crashed), crash restart with backoff, the last 200 log lines, env-var editor, per-app RAM readout, an honest "only 300 MB free" start guard, optional run-on-boot, and **Export** — a zip with a `mitti.json` manifest any machine with Node can run: `PORT=8080 node index.js`. |
+| 🤖 **CLI Agent Server** | A REAL lightweight agent CLI (OpenCode, Gemini CLI, or any command you paste) runs on the phone — Claude-Code-class, with its own tools — and MittiCloud is its 24/7 body: chat drives it, real output streams into the session, the watchdog revives it, the battery asks before heavy work. API-model brains stay available too, and setup is two visible steps: pick a brain, give it a key (or tap install). |
+| ⚡ **Automations** | Flip ready-made switches — nightly server health, weekly storage report, website uptime watch — and they just run on schedule, battery-aware. Run now shows its output immediately; the webhook link lives under Advanced. |
+| 🛰️ **Remote** | One tab for every agent: this phone's 24/7 agent (the "runs 24/7" box now shows your tailnet or tunnel address when one exists — and says honestly when you need one), your laptop's ZCode via its built-in **Web Remote Control** (paste the link once, validated, open in one tap), and **project memory** — with a one-tap **Pair your laptop** card that hands you the exact `mitti-bridge.mjs` command. |
+| 🔒 **Lock** | Optional one-token lock: visitors can look, only the token can change anything — including agent turns, task runs, app deploys, and editor saves. |
 | 🗺️ **Living guides** | A checklist that reads real system state (Termux? Tailscale? first site? agent linked?) and ticks itself off — useful long after install. |
 | 🔋 **Battery mode** | Under 30% on battery, heavy work asks first: *"This could heat the phone — run anyway?"* Agent turns, tasks and scheduled jobs all follow the same law. |
-| 🛡️ **Robust** | Graceful restarts, daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1`, and a one-command test suite: `npm test` (104 checks). |
+| 🛡️ **Robust** | Graceful restarts (hosted apps are killed with the server — never orphaned), daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1` (now also probes every hosted site), and a one-command test suite: `npm test`. |
+
+## Taking an exported app to a VPS (the roadmap, started honestly)
+
+Export downloads `yourapp-export.zip` containing the app and a `mitti.json` manifest
+(entry file, env vars, run-on-boot, RAM cap). Any machine with Node takes over:
+
+```bash
+unzip yourapp-export.zip -d yourapp && cd yourapp
+npm install --omit=dev        # once, on the new machine
+PORT=8080 node index.js       # the same PORT contract MittiCloud uses
+```
+
+Multi-device load balancing and one-click migration are the NEXT round — the
+registry + manifest + PORT contract above are designed so they slot in. This
+release deliberately does not fake them.
 
 ## Quick Start (Termux)
 

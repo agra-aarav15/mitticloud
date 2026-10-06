@@ -190,6 +190,31 @@
   margin-top: auto;
 }
 
+/* Self-check rows — one human sentence per real check, chip shows the verdict */
+.st-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.st-check .chip {
+  flex: none;
+  margin-top: 1px;
+}
+.st-check-body {
+  min-width: 0;
+}
+.st-check-sub {
+  font-size: 11.5px;
+  margin-top: 3px;
+}
+
 /* Security card (spans the grid) — lock status + set/clear flow */
 .st-wide {
   grid-column: 1 / -1;

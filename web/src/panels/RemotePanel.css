@@ -226,3 +226,44 @@
     font-size: 19px;
   }
 }
+
+/* --- v0.13: pair-your-laptop card --- */
+.rp-pair {
+  padding: 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rp-pair-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.rp-pair p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.rp-pair-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rp-pair-cmd code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #d4d4d4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+.rp-pair-note {
+  font-size: 11.5px;
+}

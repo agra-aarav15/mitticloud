@@ -377,3 +377,313 @@
   background: #141414;
   color: #fafafa;
 }
+
+/* ===================== v0.13 — live moment, dots, app cards ===================== */
+
+/* THE LIVE MOMENT — publishing ends with this, not a 3-second toast */
+.hs-live {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  flex-wrap: wrap;
+}
+.hs-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fafafa;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+  animation: mitti-ping 2.2s ease-out infinite;
+}
+.hs-live-text {
+  flex: 1;
+  min-width: 200px;
+}
+.hs-live-title {
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.hs-live-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+  word-break: break-all;
+}
+.hs-live-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* state dots on cards */
+.hs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  flex-shrink: 0;
+}
+.hs-dot.is-live {
+  background: #fafafa;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+}
+.hs-dot.is-dead {
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+}
+
+/* URL row: the real link, then copy/share/preview */
+.hs-urlrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.hs-urlrow .hs-url {
+  text-decoration: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  border-style: solid;
+}
+
+.hs-btnrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hs-btnrow .btn {
+  min-height: 32px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+}
+.hs-btnrow input {
+  flex: 1;
+  min-width: 200px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+.hs-btnrow select {
+  min-height: 32px;
+  padding: 5px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: #111;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+/* confirm step of the add flow */
+.hs-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hs-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hs-kind {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.hs-kind-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 14px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.hs-kind-btn + .hs-kind-btn {
+  border-left: 1px solid var(--line);
+}
+.hs-kind-btn.on {
+  background: linear-gradient(135deg, #ffffff, #a3a3a3);
+  color: #0a0a0a;
+  font-weight: 650;
+}
+.hs-form-hint {
+  font-size: 12px;
+}
+
+/* site preview */
+.hs-preview {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  height: 220px;
+  background: #fff;
+}
+.hs-preview iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* app logs */
+.hs-logs {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #d4d4d4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* restart hint after an edit-save */
+.hs-restart-note {
+  font-size: 12.5px;
+}
+.hs-restart-pulse {
+  animation: mitti-ping 2.2s ease-out infinite;
+}
+
+/* per-app env editor */
+.hs-env {
+  position: relative;
+}
+.hs-env summary {
+  list-style: none;
+}
+.hs-env summary::-webkit-details-marker {
+  display: none;
+}
+.hs-env-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+.hs-env-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.hs-env-row input {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  outline: none;
+}
+.hs-env-row input:first-child {
+  flex: 0 0 40%;
+  text-transform: uppercase;
+}
+.hs-env-row input:not(:first-child) {
+  flex: 1;
+  min-width: 0;
+}
+.hs-env-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.hs-env-note {
+  font-size: 11.5px;
+}
+
+/* per-site Cloudflare publish */
+.hs-cf {
+  font-size: 12.5px;
+  min-width: 0;
+}
+.hs-cf summary {
+  list-style: none;
+  cursor: pointer;
+}
+.hs-cf summary::-webkit-details-marker {
+  display: none;
+}
+.hs-cf-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hs-cf-body p {
+  margin: 0;
+  max-width: 560px;
+}
+.hs-cf select {
+  min-height: 32px;
+  padding: 5px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: #111;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+.hs-cf-result {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 560px;
+}
+.hs-lan-row {
+  margin: 4px 0 2px;
+}
+
+@media (max-width: 760px) {
+  .hs-live {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .hs-live-actions .btn {
+    flex: 1 1 40%;
+    justify-content: center;
+  }
+  .hs-name {
+    max-width: 150px;
+  }
+  .hs-card-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .hs-preview {
+    height: 180px;
+  }
+}

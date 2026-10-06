@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { toast, timeAgo, humanizeBytes, tokenHeaders, copyText } from '../api.js'
+import { toast, timeAgo, humanizeBytes, tokenHeaders, copyText, fetchBridgePairing } from '../api.js'
 import AgentPanel from './AgentPanel.jsx'
 import './RemotePanel.css'
 
@@ -83,6 +83,10 @@ function ZcodeRemote() {
   const save = () => {
     const t = draft.trim()
     if (!t) return
+    if (!/^https?:\/\//i.test(t)) {
+      toast('That does not look like a ZCode link — it should start with http', 'err')
+      return
+    }
     try {
       localStorage.setItem(ZCODE_KEY, t)
     } catch {
@@ -139,6 +143,53 @@ function ZcodeRemote() {
           <button className="btn btn-primary" disabled={!draft.trim()} onClick={save}>
             Save
           </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- pairing a laptop (the bridge, in plain words) ---
+
+function PairLaptop() {
+  const [pair, setPair] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetchBridgePairing()
+      .then((d) => alive && setPair(d))
+      .catch(() => alive && setPair(null))
+    return () => {
+      alive = false
+    }
+  }, [])
+  if (!pair) return null
+  return (
+    <div className="rp-pair glass">
+      <div className="rp-pair-title">
+        <Icon name="link" size={14} /> Pair your laptop
+      </div>
+      <p className="muted">
+        On any laptop with Node, one command fills a memory with a whole project folder — the files
+        land here, resumable from any device.
+      </p>
+      <div className="rp-pair-cmd">
+        <code>{pair.command}</code>
+        <button
+          className="btn iconbtn"
+          aria-label="Copy the pairing command"
+          title="Copy"
+          onClick={async () => {
+            const ok = await copyText(pair.command)
+            toast(ok ? 'Command copied' : "Couldn't copy — select it manually", ok ? 'ok' : 'info')
+          }}
+        >
+          <Icon name="copy" size={14} />
+        </button>
+      </div>
+      {pair.needsToken && (
+        <div className="muted rp-pair-note">
+          Your cloud is locked — set MITTI_TOKEN=&lt;your access token&gt; in the same terminal
+          first.
         </div>
       )}
     </div>
@@ -260,6 +311,23 @@ function ProjectMemory() {
     }
   }
 
+  const doDownload = async (s) => {
+    try {
+      const ctx = await fetch('/api/bridge/sessions/' + encodeURIComponent(s.id) + '/context')
+        .then((r) => (r.ok ? r.text() : ''))
+        .catch(() => '')
+      const blob = new Blob([ctx || ''], { type: 'text/plain' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = s.name + '-context.txt'
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+      toast('Context downloaded', 'ok')
+    } catch (err) {
+      toast(err.message || 'Could not download the context', 'err')
+    }
+  }
+
   const doDelete = async (s) => {
     if (confirmId !== s.id) {
       setConfirmId(s.id)
@@ -278,6 +346,7 @@ function ProjectMemory() {
 
   return (
     <div className="rp-memory">
+      <PairLaptop />
       <p className="rp-story muted">
         Store your project files and coding-agent context on this phone. Resume your work from any
         device — the <b>mitti-bridge</b> CLI on your laptop uses these same memories.
@@ -347,6 +416,9 @@ function ProjectMemory() {
               </label>
               <button className="btn" disabled={busy} onClick={() => doResume(s)}>
                 <Icon name="refresh" size={14} /> Copy context + chat
+              </button>
+              <button className="btn" disabled={busy} onClick={() => doDownload(s)}>
+                <Icon name="download" size={14} /> Download
               </button>
               <button className="btn" disabled={busy} onClick={() => doNewChat(s)}>
                 <Icon name="file" size={14} /> New chat

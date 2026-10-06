@@ -1,6 +1,7 @@
 import React, { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
 import { listFiles, downloadUrl, humanizeBytes, toast } from '../api.js'
+import CodeEditor from './CodeEditor.jsx'
 import './FilesPanel.css'
 
 const parentOf = (p) => {
@@ -112,6 +113,7 @@ export default function FilesPanel() {
   const [usage, setUsage] = useState(null)
   const [needToken, setNeedToken] = useState(false)
   const [tokenDraft, setTokenDraft] = useState('')
+  const [codeFile, setCodeFile] = useState(null) // vault-relative path of the open editor
   const mountedRef = useRef(true)
   const seqRef = useRef(0)
   const searchSeqRef = useRef(0)
@@ -608,6 +610,16 @@ export default function FilesPanel() {
                     </span>
                     <span className="fl-size muted">{isDir ? '' : humanizeBytes(r.size)}</span>
                     <span className="fl-actions">
+                      {!isDir && (
+                        <button
+                          className="btn iconbtn"
+                          onClick={() => setCodeFile(rp)}
+                          aria-label={'Edit ' + name}
+                          title="Edit"
+                        >
+                          <Icon name="code" size={15} />
+                        </button>
+                      )}
                       <button
                         className="btn iconbtn"
                         onClick={() => open(dir)}
@@ -731,18 +743,28 @@ export default function FilesPanel() {
                   )}
                   <span className="fl-date muted">{formatDate(e.modifiedAt)}</span>
                   <span className="fl-size muted">{isDir ? '' : humanizeBytes(e.size)}</span>
-                  <span className="fl-actions">
-                    {!isDir && (
-                      <a
-                        className="btn iconbtn"
-                        href={downloadUrl(full)}
-                        download={e.name}
-                        aria-label={'Download ' + e.name}
-                        title="Download"
-                      >
-                        <Icon name="download" size={15} />
-                      </a>
-                    )}
+                    <span className="fl-actions">
+                      {!isDir && (
+                        <>
+                          <button
+                            className="btn iconbtn"
+                            onClick={() => setCodeFile(full)}
+                            aria-label={'Edit ' + e.name}
+                            title="Edit"
+                          >
+                            <Icon name="code" size={15} />
+                          </button>
+                          <a
+                            className="btn iconbtn"
+                            href={downloadUrl(full)}
+                            download={e.name}
+                            aria-label={'Download ' + e.name}
+                            title="Download"
+                          >
+                            <Icon name="download" size={15} />
+                          </a>
+                        </>
+                      )}
                     <button
                       className="btn iconbtn"
                       onClick={() => startEdit(e, 'rename')}
@@ -785,6 +807,8 @@ export default function FilesPanel() {
           </ul>
         </div>
       )}
+
+      {codeFile && <CodeEditor path={codeFile} onClose={() => setCodeFile(null)} />}
     </div>
   )
 }

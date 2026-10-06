@@ -505,3 +505,37 @@
     opacity: 0;
   }
 }
+
+/* --- v0.13: two-step setup, advanced fold, honest 24/7 box --- */
+.ag-step-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+.ag-advanced {
+  margin-top: 4px;
+}
+.ag-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12.5px;
+  list-style: none;
+  padding: 4px 0;
+}
+.ag-advanced summary::-webkit-details-marker {
+  display: none;
+}
+.ag-advanced summary:hover {
+  color: #fafafa;
+}
+.ag-advanced[open] summary {
+  margin-bottom: 8px;
+}
+.ag-247-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}

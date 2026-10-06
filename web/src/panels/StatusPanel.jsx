@@ -113,7 +113,10 @@ export default function StatusPanel() {
     setHealthBusy(true)
     try {
       const d = await fetchDeepHealth()
-      if (mountedRef.current) setHealth(d)
+      if (mountedRef.current) {
+        setHealth(d)
+        setBackupAt(null) // a re-check sees the fresh backup itself — drop the "just now" flag
+      }
     } catch (err) {
       if (mountedRef.current) setHealth({ error: err.message || 'unavailable' })
     } finally {
@@ -315,6 +318,60 @@ export default function StatusPanel() {
   const usedPct =
     typeof storage.usedPct === 'number' && Number.isFinite(storage.usedPct) ? storage.usedPct : null
   const barPct = usedPct == null ? 0 : Math.max(0, Math.min(100, usedPct))
+
+  // --- Self-check: the deep-health answer, one human sentence per real check ---
+  const DAY_MS = 24 * 3600 * 1000
+  let selfRows = null
+  if (health && !health.error) {
+    const memFree = health.mem && Number.isFinite(health.mem.freeMB) ? health.mem.freeMB : null
+    const sites = health.sites && Number.isFinite(health.sites.total) ? health.sites : null
+    const backup = health.backup || null
+    const fresh = Boolean(backupAt) // "Backup now" succeeded this session — the row is the feedback
+    const failed = sites ? (sites.results || []).filter((r) => !r.up) : []
+    const backupDays = backup && backup.ageMs != null ? Math.floor(backup.ageMs / DAY_MS) : null
+    selfRows = [
+      typeof health.vaultWritable === 'boolean' && {
+        warn: !health.vaultWritable,
+        text: health.vaultWritable ? 'Storage is writable' : 'Storage is read-only'
+      },
+      memFree != null && {
+        warn: memFree < 300,
+        text:
+          (memFree < 300 ? 'Memory is low — ' : 'Memory looks fine — ') +
+          humanizeBytes(memFree * 1024 * 1024) +
+          ' free'
+      },
+      typeof health.dataOk === 'boolean' && {
+        warn: !health.dataOk,
+        text: health.dataOk ? 'Settings files are healthy' : 'A settings file is broken'
+      },
+      Boolean(sites && sites.total > 0) && {
+        warn: sites.up < sites.total,
+        text:
+          sites.up === sites.total
+            ? sites.total === 1
+              ? 'The site is responding'
+              : sites.total === 2
+                ? 'Both sites responding'
+                : 'All ' + sites.total + ' sites responding'
+            : sites.total === 1
+              ? 'The site is not responding'
+              : sites.up + ' of ' + sites.total + ' sites responding',
+        failed
+      },
+      Boolean(backup || fresh) && {
+        warn: !fresh && (!backup || backup.ageMs == null || backup.ageMs > 7 * DAY_MS),
+        text: fresh
+          ? 'Backup: just now'
+          : backup.ageMs == null
+            ? 'No backup yet'
+            : backup.ageMs < DAY_MS
+              ? 'Backup: today' + (backup.at ? ' ' + new Date(backup.at).toLocaleTimeString() : '')
+              : 'Backup: ' + backupDays + (backupDays === 1 ? ' day ago' : ' days ago')
+      }
+    ].filter(Boolean)
+  }
+  const selfWarns = selfRows ? selfRows.filter((r) => r.warn).length : 0
 
   return (
     <div className="st-panel">
@@ -566,16 +623,24 @@ export default function StatusPanel() {
             </div>
           ) : (
             <>
-              <div className="st-big">{health.ok ? 'All checks pass' : 'Something needs a look'}</div>
-              <div className="st-chips">
-                <span className={'chip ' + (health.vaultWritable ? 'chip-ok' : 'chip-warn')}>
-                  vault {health.vaultWritable ? 'writable' : 'read-only'}
-                </span>
-                {health.mem && <span className="chip">{health.mem.freeMB} MB free RAM</span>}
-                {(health.checks || []).map((c) => (
-                  <span key={c.name} className={'chip ' + (c.ok ? 'chip-ok' : 'chip-warn')}>
-                    {c.name}
-                  </span>
+              <div className="st-big">
+                {selfWarns === 0 ? 'All good — checked just now.' : 'Something needs a look'}
+              </div>
+              <div className="st-checks">
+                {selfRows.map((row, i) => (
+                  <div key={i} className="st-check">
+                    <span className={'chip ' + (row.warn ? 'chip-warn' : 'chip-ok')}>
+                      {row.warn ? 'check' : 'ok'}
+                    </span>
+                    <div className="st-check-body">
+                      {row.text}
+                      {(row.failed || []).map((r) => (
+                        <div key={r.name} className="muted st-check-sub">
+                          {r.name} — {r.error ? r.error : 'HTTP ' + r.status}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
               <div className="st-lockrow">
@@ -588,7 +653,6 @@ export default function StatusPanel() {
                   <Icon name="download" size={15} />
                   {backupBusy ? 'Backing up…' : 'Backup now'}
                 </button>
-                {backupAt && <span className="chip chip-ok">backed up {backupAt}</span>}
               </div>
             </>
           )}

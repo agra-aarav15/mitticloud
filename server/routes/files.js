@@ -522,4 +522,83 @@ router.delete('/', async (req, res, next) => {
   }
 });
 
+// --- content (the code editor): read/put ONE text file, capped + binary-refused ---
+
+const MAX_CONTENT_BYTES = 200 * 1024 * 1024; // generous edit ceiling for on-disk reads
+const MAX_EDIT_BYTES = 200 * 1024; // an edit save is capped tighter (textarea reality)
+
+/** Heuristic binary sniff: NUL bytes or a control-char-heavy head = binary. */
+function looksBinary(buf) {
+  const head = buf.subarray(0, 8000);
+  if (head.includes(0)) return true;
+  let controls = 0;
+  for (const b of head) {
+    if (b < 9 || (b > 13 && b < 32)) controls++;
+  }
+  return head.length > 0 && controls / head.length > 0.06;
+}
+
+router.get('/content', async (req, res, next) => {
+  try {
+    const rel = queryPath(req, { required: true });
+    const abs = resolveSafe(rel, FILES_DIR);
+    const st = await lstatOr404(abs, `Not found: ${toPosix(rel)}`);
+    if (!st.isFile()) {
+      throw new PathError(`Not a file: ${toPosix(rel)}`);
+    }
+    if (st.size > MAX_CONTENT_BYTES) {
+      const e = new Error(`Too large to open (over ${Math.round(MAX_CONTENT_BYTES / (1024 * 1024))} MB)`);
+      e.status = 413;
+      throw e;
+    }
+    const buf = await fsp.readFile(abs);
+    if (looksBinary(buf)) {
+      const e = new Error('Binary file — the editor handles text only. Download it instead.');
+      e.status = 415;
+      throw e;
+    }
+    res.json({
+      path: toPosix(rel),
+      size: st.size,
+      modifiedAt: st.mtime.toISOString(),
+      content: buf.toString('utf8'),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/content', async (req, res, next) => {
+  try {
+    const rel = typeof req.body?.path === 'string' ? req.body.path : '';
+    if (!rel.trim()) throw new PathError('Missing "path" in request body');
+    const content = typeof req.body?.content === 'string' ? req.body.content : null;
+    if (content === null) throw new PathError('Missing "content" in request body');
+    const buf = Buffer.from(content, 'utf8');
+    if (buf.length > MAX_EDIT_BYTES) {
+      const e = new Error(`Too large to save (over ${Math.round(MAX_EDIT_BYTES / 1024)} KB)`);
+      e.status = 413;
+      throw e;
+    }
+    if (looksBinary(buf)) {
+      const e = new Error('That content looks binary — saving text only');
+      e.status = 415;
+      throw e;
+    }
+    const abs = resolveSafe(rel, FILES_DIR);
+    const st = await fsp.lstat(abs).catch(() => null);
+    if (st && st.isDirectory()) {
+      throw new PathError(`Target is a folder: ${toPosix(rel)}`);
+    }
+    await fsp.mkdir(path.dirname(abs), { recursive: true });
+    const tmp = abs + '.mitti-edit-tmp';
+    await fsp.writeFile(tmp, buf);
+    await fsp.rename(tmp, abs);
+    const after = await fsp.stat(abs);
+    res.json({ ok: true, path: toPosix(rel), size: after.size, modifiedAt: after.mtime.toISOString() });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

@@ -112,6 +112,32 @@
   outline: 2px solid #fafafa;
   outline-offset: 1px;
 }
+/* Advanced — tucks the webhook link away; summary sits in the actions row */
+.ac-advanced {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ac-advanced summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.ac-advanced summary::-webkit-details-marker {
+  display: none;
+}
+.ac-advanced summary:hover {
+  color: #e5e5e5;
+}
 .ac-output {
   margin-top: 8px;
   display: flex;

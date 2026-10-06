@@ -12,7 +12,9 @@ import {
   saveAgentKey,
   fetchHostLan,
   fetchCliStatus,
-  installCliPreset
+  installCliPreset,
+  fetchStatus,
+  fetchTunnel
 } from '../api.js'
 import './AgentPanel.css'
 
@@ -49,6 +51,8 @@ export default function AgentPanel() {
   const [sessions, setSessions] = useState([])
   const [workspaces, setWorkspaces] = useState([])
   const [lanUrls, setLanUrls] = useState([])
+  const [cloudStatus, setCloudStatus] = useState(null)
+  const [tunnel, setTunnel] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [active, setActive] = useState(null)
   const [setupOpen, setSetupOpen] = useState(false)
@@ -95,6 +99,8 @@ export default function AgentPanel() {
     refreshCli()
     fetchAgentWorkspaces().then(setWorkspaces).catch(() => {})
     fetchHostLan().then((d) => setLanUrls(d.urls || [])).catch(() => {})
+    fetchStatus().then(setCloudStatus).catch(() => {})
+    fetchTunnel().then(setTunnel).catch(() => {})
   }, [refreshProviders, refreshSessions, refreshCli])
 
   // Home's command box hands its session over through localStorage — open it
@@ -247,6 +253,19 @@ export default function AgentPanel() {
   const showSetup = setupOpen || !activeId
   const messages = (active && active.messages) || []
   const isCliSession = active && active.engine === 'cli'
+  // the honest "reach this agent" line: tailnet name, tunnel hostname, or LAN
+  const ts = cloudStatus && cloudStatus.tailscale
+  const remoteAddr =
+    ts && ts.running && ts.dnsName
+      ? { url: ts.dnsName, via: 'your tailnet' }
+      : tunnel && tunnel.running && tunnel.url
+        ? { url: tunnel.url, via: 'the tunnel' }
+        : null
+  const lanAddr = lanUrls[0] || 'http://<lan-ip>:7333'
+  const providerLabel = (id) => {
+    const p = providers.find((x) => x.id === id)
+    return p ? p.label : id
+  }
 
   return (
     <div className="agent">
@@ -269,7 +288,9 @@ export default function AgentPanel() {
               <button className="ag-main" onClick={() => openSession(s.id)}>
                 <span className="ag-title">{s.title}</span>
                 <span className="ag-meta">
-                  {s.engine === 'cli' ? (s.cliLabel || 'CLI') + ' · CLI' : s.providerId}
+                  {s.engine === 'cli'
+                    ? (s.cliLabel || 'CLI') + ' · CLI'
+                    : providerLabel(s.providerId)}
                   {s.running ? ' · working' : ''}
                 </span>
               </button>
@@ -294,8 +315,19 @@ export default function AgentPanel() {
         <div className="ag-247">
           <Icon name="bot" size={14} />
           <span>
-            Runs 24/7 on this device. Open it from any browser:
-            {lanUrls[0] ? <code>{lanUrls[0]}</code> : <code>http://&lt;lan-ip&gt;:7333</code>}
+            Runs 24/7 on this device.{' '}
+            {remoteAddr ? (
+              <>
+                Reach it from anywhere via {remoteAddr.via}: <code>{remoteAddr.url}</code>
+              </>
+            ) : (
+              <>
+                Open it from any browser: <code>{lanAddr}</code>
+                <span className="ag-247-hint">
+                  Away from home? Turn on the tunnel — Host, Tools.
+                </span>
+              </>
+            )}
           </span>
         </div>
       </aside>
@@ -309,135 +341,162 @@ export default function AgentPanel() {
               folder you pick — and you watch every line land.
             </p>
 
-            <div className="ag-group-label muted">Real brains — CLI agents, running here</div>
-            <div className="ag-provs">
-              {cliPresets.map((p) => (
-                <button
-                  key={p.id}
-                  className={'ag-prov' + (engine === 'cli' && selectedCli === p.id ? ' active' : '')}
-                  onClick={() => {
-                    setEngine('cli')
-                    setSelectedCli(p.id)
-                    setCliCmdDraft('')
-                  }}
-                >
-                  <span className="ag-prov-name">{p.label}</span>
-                  <span className={'ag-prov-key' + (p.installed ? ' ok' : '')}>
-                    {p.id === 'custom'
-                      ? 'your command'
-                      : p.installed
-                        ? 'installed'
-                        : 'not installed'}
-                  </span>
-                </button>
-              ))}
-            </div>
-            {engine === 'cli' && cli && (
-              <div className="ag-tray">
-                <div className="ag-free muted">{cli.note}</div>
-                {cli.installed && cli.id !== 'custom' && (
-                  <div className="ag-free muted">
-                    Installed. The first message may ask you to sign in — the CLI's own words show
-                    up right in the chat, and one run on this device signs it in for good.
+            <div className="ag-step-label muted">1 — Pick a brain</div>
+            {(() => {
+              const apiFirst = cliPresets.length > 0 && !cliPresets.some((p) => p.installed)
+              const cliGroup = (
+                <>
+                  <div className="ag-group-label muted">Real brains — agent CLIs, running on this device</div>
+                  <div className="ag-provs">
+                    {cliPresets.map((p) => (
+                      <button
+                        key={p.id}
+                        className={'ag-prov' + (engine === 'cli' && selectedCli === p.id ? ' active' : '')}
+                        onClick={() => {
+                          setEngine('cli')
+                          setSelectedCli(p.id)
+                          setCliCmdDraft('')
+                        }}
+                      >
+                        <span className="ag-prov-name">{p.label}</span>
+                        <span className={'ag-prov-key' + (p.installed ? ' ok' : '')}>
+                          {p.id === 'custom'
+                            ? 'your command'
+                            : p.installed
+                              ? 'installed'
+                              : 'not installed'}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                )}
-                {cli.id !== 'custom' && !cli.installed && (
-                  <div className="ag-keyrow">
-                    <span className="muted ag-install-hint">{cli.install}</span>
-                    <button
-                      className="btn"
-                      disabled={busy || Boolean(cliInstalling)}
-                      onClick={installCli}
-                    >
-                      {cliInstalling && <span className="spin" aria-hidden="true" />}
-                      {cliInstalling ? 'Installing…' : 'Install on this device'}
-                    </button>
-                  </div>
-                )}
-                {cliInstalling && cliInstalling.logTail && cliInstalling.logTail.length > 0 && (
-                  <div className="muted ag-install-log">
-                    {cliInstalling.logTail[cliInstalling.logTail.length - 1]}
-                  </div>
-                )}
-                <div className="ag-keyrow">
-                  <input
-                    placeholder="Command — use {prompt} where the message goes"
-                    value={cliCmdDraft || (cli.cmd || '')}
-                    onChange={(e) => setCliCmdDraft(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="ag-group-label muted">Chat brains — models with an API key</div>
-            <div className="ag-provs">
-              {providers.map((p) => (
-                <button
-                  key={p.id}
-                  className={'ag-prov' + (engine === 'brain' && newProvider === p.id ? ' active' : '')}
-                  onClick={() => {
-                    setEngine('brain')
-                    setNewProvider(p.id)
-                    // the preset's endpoint/model come prefilled — every part
-                    // stays editable, so a dead preset never traps anyone
-                    setNewEndpoint(p.endpoint || '')
-                    setNewModel(p.model || '')
-                  }}
-                >
-                  <span className="ag-prov-name">{p.label}</span>
-                  <span className={'ag-prov-key' + (p.hasKey ? ' ok' : '')}>
-                    {p.hasKey ? 'key saved' : 'needs key'}
-                  </span>
-                </button>
-              ))}
-            </div>
-            {engine === 'brain' && sel && (
-              <div className="ag-tray">
-                <div className="ag-free muted">
-                  {sel.freeNote}
-                  {sel.keyUrl && (
-                    <>
-                      {' '}
-                      <a href={sel.keyUrl} target="_blank" rel="noreferrer">
-                        get a key
-                      </a>
-                    </>
+                  {engine === 'cli' && cli && (
+                    <div className="ag-tray">
+                      <div className="ag-step-label muted">2 — Install it, or sign in</div>
+                      <div className="ag-free muted">{cli.note}</div>
+                      {cli.installed && cli.id !== 'custom' && (
+                        <div className="ag-free muted">
+                          Installed. The first message may ask you to sign in — the CLI's own words
+                          show up right in the chat, and one run on this device signs it in for good.
+                        </div>
+                      )}
+                      {cli.id !== 'custom' && !cli.installed && (
+                        <div className="ag-keyrow">
+                          <span className="muted ag-install-hint">{cli.install}</span>
+                          <button
+                            className="btn"
+                            disabled={busy || Boolean(cliInstalling)}
+                            onClick={installCli}
+                          >
+                            {cliInstalling && <span className="spin" aria-hidden="true" />}
+                            {cliInstalling ? 'Installing…' : 'Install on this device'}
+                          </button>
+                        </div>
+                      )}
+                      {cliInstalling && cliInstalling.logTail && cliInstalling.logTail.length > 0 && (
+                        <div className="muted ag-install-log">
+                          {cliInstalling.logTail[cliInstalling.logTail.length - 1]}
+                        </div>
+                      )}
+                      <details className="ag-advanced">
+                        <summary>Advanced — custom command</summary>
+                        <div className="ag-keyrow">
+                          <input
+                            placeholder="Command — use {prompt} where the message goes"
+                            value={cliCmdDraft || (cli.cmd || '')}
+                            onChange={(e) => setCliCmdDraft(e.target.value)}
+                          />
+                        </div>
+                      </details>
+                    </div>
                   )}
-                </div>
-                <div className="ag-keyrow">
-                  <input
-                    placeholder="Base URL — like https://openrouter.ai/api/v1"
-                    value={newEndpoint}
-                    onChange={(e) => setNewEndpoint(e.target.value)}
-                    aria-label="Base URL of the OpenAI-compatible endpoint"
-                  />
-                </div>
-                <div className="ag-keyrow">
-                  <input
-                    placeholder="Model name — like llama-3.3-70b"
-                    value={newModel}
-                    onChange={(e) => setNewModel(e.target.value)}
-                    aria-label="Model name"
-                  />
-                </div>
-                <div className="ag-keyrow">
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    placeholder={
-                      sel.hasKey
-                        ? 'A key is saved — paste a new one to replace it'
-                        : 'Paste your ' + sel.label + ' API key'
-                    }
-                    value={keyDraft}
-                    onChange={(e) => setKeyDraft(e.target.value)}
-                  />
-                  <button className="btn" disabled={busy || !keyDraft.trim()} onClick={saveKey}>
-                    {sel.hasKey ? 'Replace key' : 'Save key'}
-                  </button>
-                </div>
-              </div>
-            )}
+                </>
+              )
+              const apiGroup = (
+                <>
+                  <div className="ag-group-label muted">Instant brains — paste a key and go</div>
+                  <div className="ag-provs">
+                    {providers.map((p) => (
+                      <button
+                        key={p.id}
+                        className={'ag-prov' + (engine === 'brain' && newProvider === p.id ? ' active' : '')}
+                        onClick={() => {
+                          setEngine('brain')
+                          setNewProvider(p.id)
+                          // the preset's endpoint/model come prefilled — every part
+                          // stays editable, so a dead preset never traps anyone
+                          setNewEndpoint(p.endpoint || '')
+                          setNewModel(p.model || '')
+                        }}
+                      >
+                        <span className="ag-prov-name">{p.label}</span>
+                        <span className={'ag-prov-key' + (p.hasKey ? ' ok' : '')}>
+                          {p.hasKey ? 'key saved' : 'needs key'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {engine === 'brain' && sel && (
+                    <div className="ag-tray">
+                      <div className="ag-step-label muted">2 — Give it a key</div>
+                      <div className="ag-free muted">
+                        {sel.freeNote}
+                        {sel.keyUrl && (
+                          <>
+                            {' '}
+                            <a href={sel.keyUrl} target="_blank" rel="noreferrer">
+                              get a key
+                            </a>
+                          </>
+                        )}
+                      </div>
+                      <div className="ag-keyrow">
+                        <input
+                          placeholder="Base URL — like https://openrouter.ai/api/v1"
+                          value={newEndpoint}
+                          onChange={(e) => setNewEndpoint(e.target.value)}
+                          aria-label="Base URL of the OpenAI-compatible endpoint"
+                        />
+                      </div>
+                      <div className="ag-keyrow">
+                        <input
+                          placeholder="Model name — like llama-3.3-70b"
+                          value={newModel}
+                          onChange={(e) => setNewModel(e.target.value)}
+                          aria-label="Model name"
+                        />
+                      </div>
+                      <div className="ag-keyrow">
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          placeholder={
+                            sel.hasKey
+                              ? 'A key is saved — paste a new one to replace it'
+                              : 'Paste your ' + sel.label + ' API key'
+                          }
+                          value={keyDraft}
+                          onChange={(e) => setKeyDraft(e.target.value)}
+                        />
+                        <button className="btn" disabled={busy || !keyDraft.trim()} onClick={saveKey}>
+                          {sel.hasKey ? 'Replace key' : 'Save key'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )
+              return apiFirst ? (
+                <>
+                  {apiGroup}
+                  {cliGroup}
+                </>
+              ) : (
+                <>
+                  {cliGroup}
+                  {apiGroup}
+                </>
+              )
+            })()}
 
             <div className="ag-startrow">
               <select value={newWorkspace} onChange={(e) => setNewWorkspace(e.target.value)}>

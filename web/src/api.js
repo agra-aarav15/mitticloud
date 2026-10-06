@@ -179,11 +179,101 @@ export const fetchTaskRuns = (id) =>
 export const webhookPath = (webhookId) => '/hook/' + webhookId
 export const webhookUrl = (webhookId) => window.location.origin + webhookPath(webhookId)
 
+// laptop pairing for project memory (the mitti-bridge one-liner)
+export const fetchBridgePairing = () => fetch('/api/bridge/pairing').then(j)
+
 // --- deep health + backups ---
 
 export const fetchDeepHealth = () => fetch('/api/health?deep=1').then(j)
 export const runBackupNow = () =>
   fetch('/api/backup/run', { method: 'POST', headers: tokenHeaders() }).then(j)
+
+// --- Live apps (real Node.js backends, hosted on this device) ---
+
+export const fetchApps = () => fetch('/api/apps').then(j).then((d) => d.apps || [])
+export const createApp = (name) =>
+  fetch('/api/apps', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name })
+  }).then(j)
+export const uploadAppFiles = (name, files) =>
+  fetch('/api/apps/' + encodeURIComponent(name) + '/files', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ files })
+  }).then(j)
+export const uploadAppZip = (name, file) => {
+  const fd = new FormData()
+  fd.append('zip', file)
+  return fetch('/api/apps/' + encodeURIComponent(name) + '/zip', {
+    method: 'POST',
+    headers: tokenHeaders(),
+    body: fd
+  }).then(j)
+}
+export const deployApp = (name, install = true) =>
+  fetch('/api/apps/' + encodeURIComponent(name) + '/deploy', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ install })
+  }).then(j)
+export const appAction = (name, action, extra = {}) =>
+  fetch(`/api/apps/${encodeURIComponent(name)}/${action}`, {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(extra)
+  }).then(j)
+export const fetchAppLogs = (name) =>
+  fetch('/api/apps/' + encodeURIComponent(name) + '/logs').then(j)
+export const updateAppConfig = (name, patch) =>
+  fetch('/api/apps/' + encodeURIComponent(name), {
+    method: 'PATCH',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(patch)
+  }).then(j)
+export const deleteAppReq = (name) =>
+  fetch('/api/apps/' + encodeURIComponent(name), { method: 'DELETE', headers: tokenHeaders() }).then(j)
+export const exportApp = async (name) => {
+  const res = await fetch('/api/apps/' + encodeURIComponent(name) + '/export', {
+    method: 'POST',
+    headers: tokenHeaders()
+  })
+  if (!res.ok) throw Object.assign(new Error('Export failed'), { status: res.status })
+  const blob = await res.blob()
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = name + '-export.zip'
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+  return true
+}
+
+// --- code editor (one text file, anywhere in the vault) ---
+
+export const fetchFileContent = (path) =>
+  fetch('/api/files/content?path=' + encodeURIComponent(path)).then(j)
+export const saveFileContent = (path, content) =>
+  fetch('/api/files/content', {
+    method: 'PUT',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ path, content })
+  }).then(j)
+
+// Share that tells the truth: the real share sheet on a phone, copy on
+// desktop. Returns 'shared' | 'copied' | 'failed' — never pretends.
+export async function shareOrCopy(url, title = '') {
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, url })
+      return 'shared'
+    } catch (err) {
+      if (err && err.name === 'AbortError') return 'shared' // user closed the sheet — done
+      /* fall through to copy */
+    }
+  }
+  return (await copyText(url)) ? 'copied' : 'failed'
+}
 
 export function humanizeBytes(n) {
   if (n == null) return '—'

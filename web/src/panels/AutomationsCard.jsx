@@ -30,7 +30,8 @@ const RECIPES = [
     desc: 'Once a night, logs RAM, uptime and whether the vault is writable — mornings start with proof the server is fine.',
     code: `const r = await fetch('${BASE}/api/health?deep=1')
 const d = await r.json()
-console.log('server ok:', d.ok, '| free RAM:', d.mem ? d.mem.freeMB + ' MB' : 'n/a', '| vault writable:', d.vaultWritable)`
+const s = d.uptimeSec || 0
+console.log('server ok:', d.ok, '| free RAM:', d.mem ? d.mem.freeMB + ' MB' : 'n/a', '| uptime:', Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm', '| vault writable:', d.vaultWritable)`
   },
   {
     id: 'storage',
@@ -120,7 +121,7 @@ export default function AutomationsCard() {
         setGate({ task, out })
       } else {
         setGate(null)
-        toast(out.ok ? 'Ran — open Last output to read it' : 'Run finished with an error', out.ok ? 'ok' : 'err')
+        toast(out.ok ? 'Ran — output is below the automation' : 'Run finished with an error', out.ok ? 'ok' : 'err')
         load()
         open(task)
       }
@@ -193,17 +194,20 @@ export default function AutomationsCard() {
                         <Icon name="file" size={12} />
                         {openId === t.id ? 'Hide output' : 'Last output'}
                       </button>
-                      <button
-                        className="ac-mini"
-                        onClick={async () => {
-                          const ok = await copyText(webhookUrl(t.webhookId))
-                          toast(ok ? 'Secret webhook link copied' : "Couldn't copy — the link is " + webhookUrl(t.webhookId), ok ? 'ok' : 'info')
-                        }}
-                        title={webhookUrl(t.webhookId)}
-                      >
-                        <Icon name="link" size={12} />
-                        Webhook
-                      </button>
+                      <details className="ac-advanced">
+                        <summary>Advanced</summary>
+                        <button
+                          className="ac-mini"
+                          onClick={async () => {
+                            const ok = await copyText(webhookUrl(t.webhookId))
+                            toast(ok ? 'Secret webhook link copied' : "Couldn't copy — the link is " + webhookUrl(t.webhookId), ok ? 'ok' : 'info')
+                          }}
+                          title={webhookUrl(t.webhookId)}
+                        >
+                          <Icon name="link" size={12} />
+                          Webhook
+                        </button>
+                      </details>
                     </div>
                   )}
                   {t && t.lastRunAt && (

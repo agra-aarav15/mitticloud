@@ -20,7 +20,9 @@ import { initTasks } from './routes/tasks.js';
 import { initSites } from './routes/sites.js';
 import { initAgent } from './routes/agent.js';
 import bridgeRouter from './routes/bridge.js';
-import { lockWrites } from './lib/auth.js';
+import { mountApps } from './routes/apps.js';
+import { initApps as bootApps, stopAllApps } from './lib/apprunner.js';
+import { lockWrites, isLocked } from './lib/auth.js';
 import { initBackup, runBackupNow } from './lib/backup.js';
 import {
   DATA_DIR,
@@ -48,11 +50,25 @@ app.disable('x-powered-by');
 app.use('/api/sites', lockWrites);
 app.use('/api/bridge/sessions', lockWrites);
 
-// --- MittiHost (/s, /api/sites) + Cloud Mode (/api/bridge/sessions) mount
-//     BEFORE the global 1MB JSON parser: site and context uploads carry
-//     multi-MB bodies and both modules set their own larger limits ---
+// --- MittiHost (/s, /api/sites) + Live apps (/api/apps) + Cloud Mode
+//     (/api/bridge/sessions) mount BEFORE the global 1MB JSON parser: site
+//     and app uploads carry multi-MB bodies and these set their own limits ---
 initSites(app);
+app.use('/api/apps', lockWrites);
+mountApps(app);
 app.use('/api/bridge/sessions', bridgeRouter);
+
+// --- laptop pairing: the one command a laptop runs to fill a project memory
+//     (GET stays open; the token itself is NEVER returned — if the cloud is
+//     locked the command carries a fill-it-in placeholder) ---
+app.get('/api/bridge/pairing', (req, res) => {
+  res.json({
+    needsToken: isLocked(),
+    command:
+      'node mitti-bridge.mjs push <memory-name> ./your-project-folder' +
+      (isLocked() ? '   (set MITTI_TOKEN=<your access token> first)' : ''),
+  });
+});
 
 app.use(express.json({ limit: '1mb' }));
 
@@ -121,7 +137,7 @@ const IS_MAIN =
 
 if (IS_MAIN) {
   const server = app.listen(PORT, () => {
-    console.log(`MittiCloud v0.12.0 running at http://localhost:${PORT}`);
+    console.log(`MittiCloud v0.13.0 running at http://localhost:${PORT}`);
     for (const { iface, address } of getLanIPs()) {
       console.log(`  also on http://${address}:${PORT} (${iface})`);
     }
@@ -133,19 +149,33 @@ if (IS_MAIN) {
   });
 
   // Graceful shutdown: SIGINT/SIGTERM stop accepting connections, finish
-  // in-flight requests, exit; a 5s force-exit covers stuck sockets.
+  // in-flight requests, kill hosted apps, exit; a 5s force-exit covers
+  // stuck sockets.
   let closing = false;
   const shutdown = (signal) => {
     if (closing) return;
     closing = true;
     console.log(`[mitticloud] ${signal} received — closing server...`);
+    try {
+      stopAllApps();
+    } catch {
+      /* children die with the process anyway */
+    }
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('exit', () => {
+    try {
+      stopAllApps();
+    } catch {
+      /* best effort */
+    }
+  });
 
   initBackup(); // daily settings backup (boot snapshot + every 6h)
+  bootApps().catch((err) => console.log('[mitticloud] app boot failed:', err.message));
 }
 
 export { app };
