@@ -3,6 +3,7 @@ import StatusPanel from './panels/StatusPanel.jsx'
 import PhotosPanel from './panels/PhotosPanel.jsx'
 import FilesPanel from './panels/FilesPanel.jsx'
 import HostPanel from './panels/HostPanel.jsx'
+import AgentPanel from './panels/AgentPanel.jsx'
 import RemotePanel from './panels/RemotePanel.jsx'
 import GuidesPanel from './panels/GuidesPanel.jsx'
 import HomePanel from './panels/HomePanel.jsx'
@@ -15,7 +16,8 @@ const TABS = [
   { id: 'photos', label: 'Photos', icon: 'image' },
   { id: 'files', label: 'Files', icon: 'folder' },
   { id: 'host', label: 'Host', icon: 'globe' },
-  { id: 'remote', label: 'Remote', icon: 'bot' },
+  { id: 'agent', label: 'Agent', icon: 'bot' },
+  { id: 'remote', label: 'Remote', icon: 'link' },
   { id: 'guides', label: 'Guides', icon: 'shield' }
 ]
 
@@ -103,14 +105,15 @@ export default function App() {
             {tab === 'photos' && <PhotosPanel />}
             {tab === 'files' && <FilesPanel />}
             {tab === 'host' && <HostPanel />}
-            {tab === 'remote' && <RemotePanel />}
+            {tab === 'agent' && <AgentPanel onGoTo={setTab} />}
+            {tab === 'remote' && <RemotePanel onGoTo={setTab} />}
             {tab === 'guides' && <GuidesPanel onGoTo={setTab} />}
           </div>
         </main>
 
-        <footer className="foot muted">
-          MittiCloud · free &amp; open source · runs on the phone in your drawer · v0.13.0
-        </footer>
+      <footer className="foot muted">
+        MittiCloud · free &amp; open source · runs on the phone in your drawer · v0.14.0
+      </footer>
       </div>
       <Toasts />
     </>

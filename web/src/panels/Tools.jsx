@@ -103,9 +103,9 @@ export default function Tools({ sites }) {
   return (
     <section className="hs-block">
       <div className="hs-label muted">Tools</div>
-      <div className="golive glass">
+      <div className="tools glass">
         {sites && sites.length > 0 ? (
-          <select className="golive-site" value={site} onChange={(e) => setSite(e.target.value)} aria-label="Site for these tools">
+          <select className="tools-site" value={site} onChange={(e) => setSite(e.target.value)} aria-label="Site for these tools">
             {sites.map((s) => (
               <option key={s.name} value={s.name}>
                 {s.name}
@@ -113,23 +113,23 @@ export default function Tools({ sites }) {
             ))}
           </select>
         ) : (
-          <p className="muted golive-note">Publish a website first — then the LAN links and tools live here.</p>
+          <p className="muted tools-note">Publish a website first — then the LAN links and tools live here.</p>
         )}
 
         <div className="hs-btnrow hs-lan-row">
           {lan &&
             lan.urls.map((u) => (
-              <button key={u} className="golive-url" onClick={() => copy(u + sitePath, 'LAN URL')}>
+              <button key={u} className="tools-url" onClick={() => copy(u + sitePath, 'LAN URL')}>
                 <span>{u + sitePath}</span>
                 <Icon name="copy" size={13} />
               </button>
             ))}
           {!lan && <span className="muted">reading network…</span>}
           {lan && lan.failed && (
-            <p className="muted golive-err">
+            <p className="muted tools-err">
               Couldn't read the network addresses.{' '}
               <button
-                className="golive-retry"
+                className="tools-retry"
                 onClick={() =>
                   fetchHostLan()
                     .then((d) => setLan({ ...d, failed: false }))
@@ -142,7 +142,7 @@ export default function Tools({ sites }) {
           )}
         </div>
 
-        <details className="golive-help">
+        <details className="tools-help">
           <summary className="muted">Advanced — public URL (tunnel) and load test</summary>
 
           <div className="hs-btnrow">
@@ -163,9 +163,9 @@ export default function Tools({ sites }) {
             </button>
           </div>
           {tunnel && tunnel.running && (
-            <div className="golive-status">
+            <div className="tools-status">
               {tunnel.mode === 'quick' && tunnel.url ? (
-                <button className="golive-url live" onClick={() => copy(tunnel.url, 'Public URL')}>
+                <button className="tools-url live" onClick={() => copy(tunnel.url, 'Public URL')}>
                   <span>{tunnel.url}</span>
                   <Icon name="copy" size={13} />
                 </button>
@@ -173,11 +173,11 @@ export default function Tools({ sites }) {
                 <span className="muted">
                   Requesting a public URL from Cloudflare…
                   {tunnel.log && tunnel.log.length > 0 && (
-                    <span className="golive-err"> {tunnel.log[tunnel.log.length - 1]}</span>
+                    <span className="tools-err"> {tunnel.log[tunnel.log.length - 1]}</span>
                   )}
                 </span>
               ) : (
-                <span className="golive-live-chip">TUNNEL RUNNING</span>
+                <span className="tools-live-chip">TUNNEL RUNNING</span>
               )}
               <span className="muted">
                 {tunnel.mode === 'token'
@@ -190,7 +190,7 @@ export default function Tools({ sites }) {
             </div>
           )}
           {tunnel && !tunnel.running && tunnel.log && tunnel.log.length > 0 && (
-            <p className="muted golive-err">cloudflared exited — {tunnel.log[tunnel.log.length - 1]}</p>
+            <p className="muted tools-err">cloudflared exited — {tunnel.log[tunnel.log.length - 1]}</p>
           )}
           <p className="muted">
             cloudflared is Cloudflare's free connector. Download the Windows exe from
@@ -212,7 +212,7 @@ export default function Tools({ sites }) {
             </button>
           </div>
           {load && (
-            <div className="golive-load">
+            <div className="tools-load">
               <span className="chip chip-ok">{load.requests} requests served</span>
               <span className="chip">{load.rps} req/s</span>
               <span className="chip">p50 {load.p50Ms} ms</span>
@@ -220,7 +220,7 @@ export default function Tools({ sites }) {
               <span className={'chip ' + (load.errors === 0 ? 'chip-ok' : 'chip-warn')}>
                 {load.errors} failed
               </span>
-              {load.note && <p className="muted golive-note">{load.note}</p>}
+              {load.note && <p className="muted tools-note">{load.note}</p>}
             </div>
           )}
         </details>

@@ -321,3 +321,19 @@ export function onToast(fn) {
 export function toast(msg, type = 'info') {
   listeners.forEach((f) => f({ id: ++toastId, msg, type }))
 }
+
+// --- client keys (per-app tokens for MCP + the /mcp endpoint) ---
+
+export const fetchClientKeys = () =>
+  fetch('/api/clients/keys').then(j).then((d) => d.keys || [])
+export const createClientKey = (name) =>
+  fetch('/api/clients/keys', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name })
+  }).then(j)
+export const revokeClientKey = (id) =>
+  fetch('/api/clients/keys/' + encodeURIComponent(id), {
+    method: 'DELETE',
+    headers: tokenHeaders()
+  }).then(j)

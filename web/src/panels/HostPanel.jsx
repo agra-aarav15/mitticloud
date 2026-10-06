@@ -148,6 +148,21 @@ function appUrl(port) {
   return 'http://' + window.location.hostname + ':' + port
 }
 
+// Human words for a dead site, mapped from what the deep health check saw:
+// a 404 means nothing answers at the root, any other HTTP status means the
+// server spoke, and a bare error string means we never reached it at all.
+function siteDiagnosis(h) {
+  if (!h || h.up) return null
+  if (h.status === 404) {
+    return "Nothing answers at / — the site's files may be missing an index.html at the root. Update re-uploads them."
+  }
+  if (h.status) {
+    return 'The server answered HTTP ' + h.status + " — open it to see what's wrong."
+  }
+  if (h.error) return 'Not reachable right now — it may come back, or it was removed.'
+  return null
+}
+
 export default function HostPanel() {
   const [sites, setSites] = useState(null) // null = loading
   const [apps, setApps] = useState(null)
@@ -219,7 +234,7 @@ export default function HostPanel() {
       const d = await fetchDeepHealth()
       if (!mountedRef.current) return
       const map = {}
-      for (const r of d.sites?.results || []) map[r.name] = { up: r.up, status: r.status }
+      for (const r of d.sites?.results || []) map[r.name] = { up: r.up, status: r.status, error: r.error }
       setSiteHealth(map)
     } catch {
       /* the dots just stay dim */
@@ -341,7 +356,6 @@ export default function HostPanel() {
   }
 
   const publishSite = async (siteName) => {
-    const tooBig = picked.kind === 'folder' ? picked.files.filter((f) => f.size > MAX_FILE_BYTES) : []
     const usable =
       picked.kind === 'folder' ? picked.files.filter((f) => f.size <= MAX_FILE_BYTES) : null
     if (picked.kind === 'folder' && usable.length === 0) {
@@ -360,11 +374,7 @@ export default function HostPanel() {
         setProgress('Publishing zip…')
         const r = await uploadSiteZip(siteName, picked.file)
         const n = r && typeof r.files === 'number' ? r.files : null
-        toast(
-          (n != null ? 'Published ' + n + ' files' : 'Site published') +
-            (tooBig.length ? '' : ''),
-          'ok'
-        )
+        toast(n != null ? 'Published ' + n + ' files' : 'Site published', 'ok')
       } else {
         const batches = []
         let cur = []
@@ -842,7 +852,7 @@ export default function HostPanel() {
         tabIndex={-1}
       />
 
-      <section className="hs-block">
+      <section className="hs-block stag">
         <div className="hs-label muted">Websites</div>
         {sitesList === null ? (
           <div className="hs-card glass" aria-hidden="true">
@@ -866,6 +876,7 @@ export default function HostPanel() {
             const files = u && typeof u.files === 'number' ? u.files : site.fileCount
             const bytes = u && typeof u.bytes === 'number' ? u.bytes : site.bytes
             const h = siteHealth[site.name]
+            const diag = siteDiagnosis(h)
             const url = siteUrl(site.name)
             return (
               <section key={site.name} className="hs-card glass">
@@ -909,6 +920,7 @@ export default function HostPanel() {
                     )}
                   </div>
                 </div>
+                {diag && <div className="hs-diag">{diag}</div>}
                 <div className="hs-urlrow">
                   <a className="hs-url" href={url} target="_blank" rel="noreferrer">
                     {url}
@@ -929,11 +941,13 @@ export default function HostPanel() {
                     <Icon name="eye" size={14} />
                   </button>
                 </div>
-                {previewSite === site.name && (
-                  <div className="hs-preview">
-                    <iframe title={'Preview of ' + site.name} src={'/s/' + site.name + '/'} loading="lazy" />
+                <div className={'xwrap' + (previewSite === site.name ? ' open' : '')}>
+                  <div>
+                    <div className="hs-preview">
+                      <iframe title={'Preview of ' + site.name} src={'/s/' + site.name + '/'} loading="lazy" />
+                    </div>
                   </div>
-                )}
+                </div>
                 <div className="hs-meta">
                   <CfPublish site={site.name} />
                   <span className="hs-created muted">hosted {timeAgo(site.createdAt)}</span>
@@ -944,7 +958,7 @@ export default function HostPanel() {
         )}
       </section>
 
-      <section className="hs-block">
+      <section className="hs-block stag">
         <div className="hs-label muted">Live apps</div>
         {appsList === null ? (
           <div className="hs-card glass" aria-hidden="true">
@@ -1080,11 +1094,17 @@ export default function HostPanel() {
                     Code saved — hit Restart to serve the new version.
                   </div>
                 )}
-                {openLogs === app.name && (
-                  <pre className="hs-logs">
-                    {logs.length === 0 ? 'No output yet.' : logs.slice(-40).join('\n')}
-                  </pre>
-                )}
+                <div className={'xwrap' + (openLogs === app.name ? ' open' : '')}>
+                  <div>
+                    <pre className="hs-logs">
+                      {openLogs === app.name
+                        ? logs.length === 0
+                          ? 'No output yet.'
+                          : logs.slice(-40).join('\n')
+                        : ''}
+                    </pre>
+                  </div>
+                </div>
                 <div className="hs-meta">
                   <span className="muted">
                     Runs on this phone with its own port. Publish to Cloudflare is for static sites —
@@ -1127,66 +1147,67 @@ function AppEnv({ app, busy, onSave }) {
     }
   }, [open, app.env])
   return (
-    <details
-      className="hs-env"
-      onToggle={(e) => setOpen(e.target.open)}
-    >
-      <summary className="btn">
+    <div className={'hs-env' + (open ? ' open' : '')}>
+      <button type="button" className="btn" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name="lock" size={13} /> Env
-      </summary>
-      <div className="hs-env-body">
-        {rows.map((row, i) => (
-          <div key={i} className="hs-env-row">
-            <input
-              placeholder="NAME"
-              value={row.k}
-              onChange={(e) =>
-                setRows((cur) => cur.map((r, j) => (j === i ? { ...r, k: e.target.value } : r)))
-              }
-              aria-label={'Env name ' + (i + 1)}
-              spellCheck={false}
-              autoCapitalize="off"
-            />
-            <input
-              placeholder="value"
-              value={row.v}
-              onChange={(e) =>
-                setRows((cur) => cur.map((r, j) => (j === i ? { ...r, v: e.target.value } : r)))
-              }
-              aria-label={'Env value ' + (i + 1)}
-              spellCheck={false}
-            />
-            <button
-              className="btn iconbtn"
-              onClick={() => setRows((cur) => cur.filter((_, j) => j !== i))}
-              aria-label={'Remove env row ' + (i + 1)}
-              title="Remove"
-            >
-              <Icon name="x" size={13} />
-            </button>
+      </button>
+      <div className={'xwrap' + (open ? ' open' : '')}>
+        <div>
+          <div className="hs-env-body">
+            {rows.map((row, i) => (
+              <div key={i} className="hs-env-row">
+                <input
+                  placeholder="NAME"
+                  value={row.k}
+                  onChange={(e) =>
+                    setRows((cur) => cur.map((r, j) => (j === i ? { ...r, k: e.target.value } : r)))
+                  }
+                  aria-label={'Env name ' + (i + 1)}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                />
+                <input
+                  placeholder="value"
+                  value={row.v}
+                  onChange={(e) =>
+                    setRows((cur) => cur.map((r, j) => (j === i ? { ...r, v: e.target.value } : r)))
+                  }
+                  aria-label={'Env value ' + (i + 1)}
+                  spellCheck={false}
+                />
+                <button
+                  className="btn iconbtn"
+                  onClick={() => setRows((cur) => cur.filter((_, j) => j !== i))}
+                  aria-label={'Remove env row ' + (i + 1)}
+                  title="Remove"
+                >
+                  <Icon name="x" size={13} />
+                </button>
+              </div>
+            ))}
+            <div className="hs-env-actions">
+              <button className="btn" onClick={() => setRows((cur) => [...cur, { k: '', v: '' }])}>
+                <Icon name="plus" size={13} /> Add
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => {
+                  const env = {}
+                  for (const r of rows) {
+                    if (r.k.trim()) env[r.k.trim()] = r.v
+                  }
+                  onSave(app, env)
+                  setOpen(false)
+                }}
+              >
+                Save env
+              </button>
+            </div>
+            <span className="muted hs-env-note">Reach the app as process.env.NAME — restart to apply.</span>
           </div>
-        ))}
-        <div className="hs-env-actions">
-          <button className="btn" onClick={() => setRows((cur) => [...cur, { k: '', v: '' }])}>
-            <Icon name="plus" size={13} /> Add
-          </button>
-          <button
-            className="btn btn-primary"
-            disabled={busy}
-            onClick={() => {
-              const env = {}
-              for (const r of rows) {
-                if (r.k.trim()) env[r.k.trim()] = r.v
-              }
-              onSave(app, env)
-              setOpen(false)
-            }}
-          >
-            Save env
-          </button>
         </div>
-        <span className="muted hs-env-note">Reach the app as process.env.NAME — restart to apply.</span>
       </div>
-    </details>
+    </div>
   )
 }

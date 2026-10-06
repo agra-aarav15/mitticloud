@@ -21,24 +21,27 @@
 - **Free-tier servers come and go.** Oracle's "always free" instances get reclaimed, credits expire, fine print changes. A drawer-phone never asks for a credit card and never sends you a bill.
 - **Half a billion phones are sleeping.** ~500 million old phones sit in drawers doing nothing while e-waste piles up. The most powerful computer you already own deserves better than a junk drawer.
 
-## What you get in v0.13
+## What you get in v0.14
 
 | Feature | What it does |
 |---|---|
-| 🏠 **Home** | A lightweight start screen: one honest sentence from live data ("1 site live · 438 photos safe · agent idle · AC power"), four big ways to start, and what you touched last. No command box on purpose — jobs run in the agent, where they actually run. |
-| 📊 **Live dashboard** | Real battery (or an honest "AC power — no battery"), real storage, uptime, Tailscale/LAN access info, and a self-check in human words: "Storage is writable · Memory looks fine · Both sites responding · Backup: today 12:00" — internal check names never reach the screen. |
+| 🔌 **MCP — many apps connect** | Any MCP-capable AI app (ZCode, Claude Desktop, Cursor…) gets real tools for your cloud: `server_status, list_files, read_file, write_file, list_photos, list_sites, list_apps, start_app, stop_app, app_logs, memory_context`. Zero-dependency stdio script for apps on your machine, `POST /mcp` over HTTP for apps anywhere — both authed by per-app client keys. |
+| 🔑 **Client keys** | One key per app, created in the UI, shown exactly once, stored as a sha256 hash, revocable anytime, never returned by any API, never in backups. |
+| 🛰️ **Remote = the connect hub** | Rebuilt around three honest segments: **Apps** (MCP setup with copy-paste config, API keys, the ZCode web remote, an SSH recipe for Termux), **Devices** (pair your laptop, project memory), **Reach** (your real tailnet / tunnel / LAN addresses with copy + share). The sliding segment indicator actually slides. |
+| 🤖 **Agent — its own tab** | The REAL lightweight agent (OpenCode, Gemini CLI, or any command) runs on the phone — Claude-Code-class, with its own tools — and MittiCloud is its 24/7 body: chat drives it, output streams live, the watchdog revives it, the battery asks before heavy work, and setup stays two steps: pick a brain, give it a key (or tap install). v0.14 moves it out of Remote into its own tab. |
+| 🏅 **MittiBadge** | A live, embeddable badge proving a site runs on a drawer phone: visits today, uptime, power — real numbers, one `<img>` line, zero dependencies. |
+| ✨ **Motion that breathes** | One tempo for the whole app: duration/easing tokens, staggered card entrances everywhere, smooth log/preview/env expands, count-up numbers, real button press feedback — and the live-dot pulse actually pulses (v0.13 referenced the animation but nobody had defined it). Everything respects reduced-motion. |
+| 🏠 **Home** | Live counts that count up ("2 hosted here"), a hero sentence with running apps included, and five doors: photos, files, host, your agent, connect your apps. |
+| 🌐 **MittiHost** | Same one add-flow, now with honest **dead-site diagnosis**: a site that stopped answering says why in human words ("Nothing answers at / — the site's files may be missing an index.html at the root. Update re-uploads them."). |
+| 📊 **Live dashboard** | Real battery/storage/uptime, Tailscale/LAN access, and the human-words self-check ("All good — checked just now."). |
 | 🖼️ **Photo backup** | Bulk upload from any device, automatic duplicate detection, date albums, favorites, download-all as ZIP. |
-| 📁 **Real drive + editor** | Upload files and folders (streaming — big files OK), rename, move, copy, multi-select delete, folder ZIP download, search, per-folder usage — and now a real code editor: tap the `<>` icon on any text file and edit it right on the device (200 KB cap, binary files honestly refused, atomic saves). |
-| 🏅 **MittiBadge** | A live, embeddable badge proving a site runs on a drawer phone: visits today, uptime, power — real numbers, one `<img>` line, zero dependencies. Nothing like it exists. |
-| 🌐 **MittiHost** | Websites AND live apps. One add flow — pick a folder or ZIP, the name fills itself, the type is detected (website vs Node app). Publishing ends with a real live moment: "portfolio is live." with Open / Copy / Share. Site cards show a live dot (a real server-side check), the full link, an inline preview, Update, per-site Publish to Cloudflare (token stored on-device only), and share-sheet sharing on phones. Tools (LAN links, tunnels, load test) live under Advanced so the cards stay the story. |
-| ⚙️ **Live apps** | Host a real Node.js backend on the phone: it gets its own port (7401+), `PORT` in its environment, packages auto-installed from package.json (live log, 5-minute cap), a state chip (starting/running/stopped/crashed), crash restart with backoff, the last 200 log lines, env-var editor, per-app RAM readout, an honest "only 300 MB free" start guard, optional run-on-boot, and **Export** — a zip with a `mitti.json` manifest any machine with Node can run: `PORT=8080 node index.js`. |
-| 🤖 **CLI Agent Server** | A REAL lightweight agent CLI (OpenCode, Gemini CLI, or any command you paste) runs on the phone — Claude-Code-class, with its own tools — and MittiCloud is its 24/7 body: chat drives it, real output streams into the session, the watchdog revives it, the battery asks before heavy work. API-model brains stay available too, and setup is two visible steps: pick a brain, give it a key (or tap install). |
-| ⚡ **Automations** | Flip ready-made switches — nightly server health, weekly storage report, website uptime watch — and they just run on schedule, battery-aware. Run now shows its output immediately; the webhook link lives under Advanced. |
-| 🛰️ **Remote** | One tab for every agent: this phone's 24/7 agent (the "runs 24/7" box now shows your tailnet or tunnel address when one exists — and says honestly when you need one), your laptop's ZCode via its built-in **Web Remote Control** (paste the link once, validated, open in one tap), and **project memory** — with a one-tap **Pair your laptop** card that hands you the exact `mitti-bridge.mjs` command. |
-| 🔒 **Lock** | Optional one-token lock: visitors can look, only the token can change anything — including agent turns, task runs, app deploys, and editor saves. |
-| 🗺️ **Living guides** | A checklist that reads real system state (Termux? Tailscale? first site? agent linked?) and ticks itself off — useful long after install. |
-| 🔋 **Battery mode** | Under 30% on battery, heavy work asks first: *"This could heat the phone — run anyway?"* Agent turns, tasks and scheduled jobs all follow the same law. |
-| 🛡️ **Robust** | Graceful restarts (hosted apps are killed with the server — never orphaned), daily settings backup (7 days kept, API keys never backed up), deep `/api/health?deep=1` (now also probes every hosted site), and a one-command test suite: `npm test`. |
+| 📁 **Real drive + editor** | Streaming uploads, rename/move/copy/multi-delete, folder ZIP, search — and the monochrome code editor (Host and Files, 200 KB saves, binary files honestly refused, atomic writes). |
+| ⚙️ **Live apps** | Node apps with their own port (7401+), `PORT` in the environment, auto npm install with a live log, crash restart with backoff, honest crashed states, log viewer, env editor, RAM guard, run-on-boot, and Export (zip + `mitti.json`) for a VPS takeover. |
+| ⚡ **Automations** | Ready-made scheduled jobs with Run-now output and webhook links under Advanced, battery-aware. |
+| 🔒 **Lock** | Optional one-token lock: visitors look, only the token changes things — including app deploys, editor saves, and agent turns. Client keys have their own lane for apps. |
+| 🗺️ **Living guides** | The checklist that reads real system state and ticks itself off. |
+| 🔋 **Battery mode** | Under 30% on battery, heavy work asks first. Agent turns, tasks and scheduled jobs follow the same law. |
+| 🛡️ **Robust** | Graceful restarts (hosted apps never orphaned), daily settings backup (7 days kept — agent keys, CF tokens and client keys never backed up), deep `/api/health?deep=1`, and a one-command suite: `npm test` (135 checks, including a real MCP stdio subprocess round-trip). |
 
 ## Taking an exported app to a VPS (the roadmap, started honestly)
 
@@ -147,6 +150,7 @@ Sessions are plain JSON files on the phone — a server restart never eats a con
 - [x] Public URLs for MittiHost sites via in-app Cloudflare Tunnel (Go Live)
 - [x] Simple auth token (the Lock)
 - [ ] MittiMesh — many drawer-phones pooling into one cloud
+- [ ] WebDAV — mount the vault as a drive from any file manager (next round — it must not ship half-working)
 - [ ] One-tap Termux bootstrap script hosted on GitHub Pages
 - [ ] Verified Play Store APK wrapper
 

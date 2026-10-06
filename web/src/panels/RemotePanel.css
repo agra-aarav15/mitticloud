@@ -1,5 +1,6 @@
-/* RemotePanel — one tab for every agent: this phone's, the laptop's ZCode
-   session, and project memory. Segmented, plain, monochrome. */
+/* RemotePanel — the connect hub: Apps (MCP, keys, ZCode remote, SSH),
+   Devices (project memory + laptop pairing), Reach (the real addresses).
+   Strict monochrome, motion from tokens.css, agent chat lives elsewhere. */
 
 .rp-panel {
   display: flex;
@@ -22,55 +23,262 @@
   margin-top: 2px;
 }
 
+/* --- segment control with the sliding thumb --- */
+
 .rp-segments {
+  position: relative;
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+.rp-thumb {
+  position: absolute;
+  inset: 4px;
+  width: calc((100% - 8px) / 3);
+  background: linear-gradient(135deg, #ffffff, #d4d4d4);
+  border-radius: 10px;
+  transform: translateX(calc(var(--seg-i, 0) * 100%));
+  transition: transform var(--t-med) var(--ease);
+  pointer-events: none;
 }
 .rp-seg {
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
   color: var(--muted);
   font-family: inherit;
   font-size: 13px;
-  font-weight: 600;
-  border-radius: 999px;
-  padding: 8px 16px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  padding: 9px 12px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  transition: color var(--t-fast);
 }
 .rp-seg:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
 }
 .rp-seg.active {
-  background: #fafafa;
-  border-color: #fafafa;
   color: #0a0a0a;
 }
 .rp-seg:focus-visible {
   outline: 2px solid #fafafa;
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
+/* segment body re-enters on every switch (keyframes live in tokens.css) */
 .rp-body {
   min-width: 0;
+  animation: main-in var(--t-fast) ease;
 }
 
-/* shared story + rows */
-.rp-story {
-  margin: 0 0 10px;
-  font-size: 13.5px;
-  line-height: 1.55;
+/* --- cards (one list per segment, .stag makes them land one by one) --- */
+
+.rp-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
-.rp-story b {
+.rp-card {
+  padding: 15px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rp-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.rp-name {
+  font-weight: 700;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+}
+.rp-sub {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.rp-note {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* numbered steps, human words */
+.rp-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  counter-reset: rpstep;
+}
+.rp-steps li {
+  counter-increment: rpstep;
+  position: relative;
+  padding-left: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rp-steps li::before {
+  content: counter(rpstep);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #d4d4d4;
+}
+.rp-step-title {
+  font-weight: 650;
+  font-size: 13.5px;
+}
+.rp-step-note {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* copyable code row */
+.rp-coderow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.rp-coderow code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #d4d4d4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+.rp-coderow.wrap code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Advanced — a quiet details drawer */
+.rp-advanced {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+.rp-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  list-style: none;
+  transition: color var(--t-fast);
+}
+.rp-advanced summary::-webkit-details-marker {
+  display: none;
+}
+.rp-advanced summary::before {
+  content: '+';
+  font-weight: 700;
+  width: 12px;
+  text-align: center;
+}
+.rp-advanced[open] summary::before {
+  content: '−';
+}
+.rp-advanced summary:hover,
+.rp-advanced[open] summary {
+  color: var(--text);
+}
+.rp-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* the one-time key reveal — bordered, impossible to scroll past */
+.rp-reveal {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rp-reveal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 650;
   color: #e5e5e5;
 }
+.rp-reveal-head svg {
+  flex: none;
+}
+
+/* key list */
+.rp-keylist {
+  display: flex;
+  flex-direction: column;
+}
+.rp-keyrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+.rp-keyrow:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.rp-keymeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rp-keyname {
+  font-weight: 650;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-keysub {
+  font-size: 11.5px;
+}
+
+/* shared form rows */
 .rp-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 10px;
+  margin-top: 2px;
 }
 .rp-actions input {
   flex: 1;
@@ -99,27 +307,13 @@
 .rp-progress {
   font-size: 12.5px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  margin-top: 8px;
 }
 
-/* ZCode launcher */
-.rp-zcode {
-  padding: 20px clamp(16px, 4%, 28px);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.02);
-}
-.rp-steps {
-  margin: 0 0 4px;
-  padding-left: 20px;
-  font-size: 13px;
-  line-height: 1.7;
-}
+/* ZCode remote, saved state */
 .rp-saved {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 12px;
   min-width: 0;
 }
 .rp-saved-url {
@@ -128,24 +322,68 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rp-zcode .rp-actions {
-  margin-top: 12px;
-}
 .rp-open {
   text-decoration: none;
 }
 
-/* project memory */
+/* SSH labels */
+.rp-ssh-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Reach rows */
+.rp-reach-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.rp-reach-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.rp-reach-url {
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  align-self: flex-start;
+  transition: border-color var(--t-fast);
+}
+.rp-reach-url:hover {
+  border-bottom-color: #fafafa;
+}
+.rp-reach-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* --- Devices: project memory + pairing --- */
+
 .rp-memory {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-.rp-card {
-  padding: 13px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.rp-story {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.rp-story b {
+  color: #e5e5e5;
 }
 .rp-card-head {
   display: flex;
@@ -153,21 +391,11 @@
   justify-content: space-between;
   gap: 10px;
 }
-.rp-card-title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.rp-name {
-  font-weight: 700;
-  font-size: 14.5px;
-}
 .rp-meta {
   font-size: 12px;
 }
 .rp-pre {
-  margin: 10px 0 0;
+  margin: 0;
   padding: 10px 12px;
   border-top: 1px solid var(--line);
   font-size: 12px;
@@ -188,46 +416,13 @@
   .rp-card-actions {
     align-self: flex-end;
   }
-}
-
-/* --- the embedded agent panel breathes inside its segment (no box-in-box) --- */
-.rp-body .agent {
-  grid-template-columns: 220px 1fr;
-  min-height: 520px;
-}
-.rp-body .agent > .agent-side,
-.rp-body .agent > .agent-main {
-  border: none;
-  background: rgba(255, 255, 255, 0.02);
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-/* on a phone the rail moves below the chat and the chat goes full width —
-   this selector is more specific than the base .agent media rule, so it has
-   to repeat the collapse here or the setup screen stays squeezed */
-@media (max-width: 760px) {
-  .rp-body .agent {
-    grid-template-columns: 1fr;
-    min-height: 0;
-  }
-  .rp-body .agent > .agent-side {
-    order: 2;
-    max-height: 240px;
-  }
-  .rp-body .agent > .agent-main {
-    order: 1;
-  }
-  .ag-setup {
-    padding: 16px 14px;
-  }
-  .ag-setup h2 {
-    font-size: 19px;
+  .rp-reach-row .rp-reach-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 
-/* --- v0.13: pair-your-laptop card --- */
+/* pair-your-laptop card */
 .rp-pair {
   padding: 13px 16px;
   display: flex;

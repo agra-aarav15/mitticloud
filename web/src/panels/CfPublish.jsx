@@ -110,7 +110,7 @@ export default function CfPublish({ site }) {
           </div>
           {cf.error && (
             <p className="muted hs-cf-err">
-              Couldn't read Cloudflare status — {cf.error}. <button className="golive-retry" onClick={refresh}>Retry</button>
+              Couldn't read Cloudflare status — {cf.error}. <button className="tools-retry" onClick={refresh}>Retry</button>
             </p>
           )}
         </div>
@@ -140,7 +140,7 @@ export default function CfPublish({ site }) {
       </button>
       {result && (
         <div className="hs-cf-result">
-          <button className="golive-url live" onClick={() => copy(result.url, 'Live URL')}>
+          <button className="tools-url live" onClick={() => copy(result.url, 'Live URL')}>
             <span>{result.url}</span>
             <Icon name="copy" size={13} />
           </button>

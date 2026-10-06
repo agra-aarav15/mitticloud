@@ -194,11 +194,6 @@
   outline: 2px solid #fafafa;
   outline-offset: 1px;
 }
-.hs-url-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .hs-created {
   font-variant-numeric: tabular-nums;
 }
@@ -214,63 +209,22 @@
   height: 14px;
 }
 
-/* --- GoLive: the cfn flow (LAN test -> Cloudflare -> prove it) --- */
-.golive {
+/* --- Tools: LAN links, tunnels, load test (renamed from their v0.12 panel) --- */
+.tools {
   padding: 16px 18px 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
-.golive-site {
+.tools-site {
   align-self: flex-start;
   min-width: 200px;
 }
-.golive-note {
+.tools-note {
   margin: 0;
   font-size: 13.5px;
 }
-.golive-steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 14px;
-}
-.golive-step {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 13px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  background: rgba(255, 255, 255, 0.02);
-}
-.golive-step-head {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-.golive-num {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  background: #fafafa;
-  color: #0a0a0a;
-  font-weight: 800;
-  font-size: 12.5px;
-  display: grid;
-  place-items: center;
-}
-.golive-title {
-  font-weight: 700;
-  font-size: 13.5px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-.golive-step p {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-.golive-url {
+.tools-url {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -284,30 +238,22 @@
   font-size: 12.5px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
-.golive-url:hover {
+.tools-url:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.3);
 }
-.golive-url.live {
+.tools-url.live {
   border-color: rgba(255, 255, 255, 0.4);
   background: rgba(255, 255, 255, 0.08);
 }
-.golive-url span {
+.tools-url span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.golive-btnrow {
-  display: flex;
-  gap: 8px;
-}
-.golive-btnrow input {
-  flex: 1;
-  min-width: 0;
-}
-.golive-status {
+.tools-status {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -316,41 +262,62 @@
   padding: 10px 12px;
   background: rgba(255, 255, 255, 0.05);
 }
-.golive-status .btn {
+.tools-status .btn {
   align-self: flex-start;
 }
-.golive-live-chip {
+.tools-live-chip {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.14em;
   color: #fafafa;
 }
-.golive-err {
+.tools-err {
   font-size: 12.5px;
   margin: 0;
 }
-.golive-help summary {
+.tools-help summary {
   cursor: pointer;
   font-size: 12.5px;
 }
-.golive-help p {
+.tools-help p {
   margin: 8px 0;
 }
-.golive-help input {
+.tools-help input {
   width: 100%;
 }
-.golive-load {
+.tools-load {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
+/* inline retry next to an honest error line (Tools + Cloudflare card) */
+.tools-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+.tools-retry:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--text);
+}
 
-/* shared input style for golive + setup rows */
-.golive input,
+/* shared input style for tools + setup rows */
+.tools input,
 .ag-keyrow input,
 .ag-keyrow select,
-.golive-site,
-.golive-help input {
+.tools-site,
+.tools-help input {
   padding: 10px 12px;
   border-radius: 11px;
   border: 1px solid var(--line);
@@ -359,21 +326,21 @@
   font-family: inherit;
   font-size: 13px;
 }
-.golive input:focus,
+.tools input:focus,
 .ag-keyrow input:focus,
 .ag-keyrow select:focus,
-.golive-site:focus,
-.golive-help input:focus {
+.tools-site:focus,
+.tools-help input:focus {
   outline: none;
   border-color: rgba(255, 255, 255, 0.4);
 }
-.golive input::placeholder,
-.golive-help input::placeholder,
+.tools input::placeholder,
+.tools-help input::placeholder,
 .ag-keyrow input::placeholder {
   color: rgba(163, 163, 163, 0.65);
 }
-.golive select option,
-.golive-site option {
+.tools select option,
+.tools-site option {
   background: #141414;
   color: #fafafa;
 }
@@ -388,6 +355,7 @@
   padding: 14px 16px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   flex-wrap: wrap;
+  animation: rise var(--t-slow) var(--ease) backwards;
 }
 .hs-live-dot {
   width: 10px;
@@ -442,7 +410,7 @@
 .hs-urlrow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .hs-urlrow .hs-url {
@@ -453,6 +421,18 @@
   white-space: nowrap;
   color: var(--text);
   border-style: solid;
+}
+
+/* diagnosis line for dead sites — human words for what the health check saw */
+.hs-diag {
+  font-size: 12.5px;
+  color: var(--muted);
+  border-left: 2px solid var(--line);
+  padding: 6px 10px;
+  margin: 8px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hs-btnrow {
@@ -478,16 +458,6 @@
   font-family: inherit;
   font-size: 12.5px;
   outline: none;
-}
-.hs-btnrow select {
-  min-height: 32px;
-  padding: 5px 8px;
-  border-radius: 9px;
-  border: 1px solid var(--line);
-  background: #111;
-  color: var(--text);
-  font-family: inherit;
-  font-size: 12.5px;
 }
 
 /* confirm step of the add flow */
@@ -576,11 +546,9 @@
 .hs-env {
   position: relative;
 }
-.hs-env summary {
-  list-style: none;
-}
-.hs-env summary::-webkit-details-marker {
-  display: none;
+/* when open, the editor takes its own full row in the button row */
+.hs-env.open {
+  flex: 1 1 100%;
 }
 .hs-env-body {
   margin-top: 10px;
@@ -635,6 +603,19 @@
 }
 .hs-cf summary::-webkit-details-marker {
   display: none;
+}
+/* site-card meta controls share the app-card control-row rhythm (32px) */
+.hs-cf .btn {
+  min-height: 32px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+}
+/* honest error line under the connect form */
+.hs-cf-err {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  word-break: break-word;
 }
 .hs-cf-body {
   margin-top: 10px;

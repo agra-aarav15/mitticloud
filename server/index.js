@@ -20,6 +20,8 @@ import { initTasks } from './routes/tasks.js';
 import { initSites } from './routes/sites.js';
 import { initAgent } from './routes/agent.js';
 import bridgeRouter from './routes/bridge.js';
+import clientsRouter from './routes/clients.js';
+import mcpRouter from './routes/mcp.js';
 import { mountApps } from './routes/apps.js';
 import { initApps as bootApps, stopAllApps } from './lib/apprunner.js';
 import { lockWrites, isLocked } from './lib/auth.js';
@@ -83,7 +85,12 @@ app.use('/api/status', statusRouter);
 app.use('/api', lockRouter); // router paths: GET /lock-status, PUT /lock
 app.use('/api/photos', photosRouter);
 app.use('/api/files', filesRouter);
+app.use('/api/clients', clientsRouter); // client keys for MCP + custom apps
 app.use('/api/host', hostRouter); // LAN URLs + Cloudflare tunnel + load test
+
+// --- MCP over HTTP: AI apps connect with a client key (Bearer mitti_...) —
+//     the network door for "many apps", not just localhost ---
+app.use(mcpRouter);
 
 // --- backup: one-shot settings snapshot (lock-protected via the guard above)
 app.post('/api/backup/run', (req, res, next) => {
@@ -137,7 +144,7 @@ const IS_MAIN =
 
 if (IS_MAIN) {
   const server = app.listen(PORT, () => {
-    console.log(`MittiCloud v0.13.0 running at http://localhost:${PORT}`);
+    console.log(`MittiCloud v0.14.0 running at http://localhost:${PORT}`);
     for (const { iface, address } of getLanIPs()) {
       console.log(`  also on http://${address}:${PORT} (${iface})`);
     }

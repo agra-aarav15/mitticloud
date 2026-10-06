@@ -1,14 +1,28 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { toast, timeAgo, humanizeBytes, tokenHeaders, copyText, fetchBridgePairing } from '../api.js'
-import AgentPanel from './AgentPanel.jsx'
+import {
+  toast,
+  timeAgo,
+  humanizeBytes,
+  tokenHeaders,
+  copyText,
+  fetchBridgePairing,
+  shareOrCopy,
+  fetchStatus,
+  fetchHostLan,
+  fetchTunnel,
+  fetchClientKeys,
+  createClientKey,
+  revokeClientKey
+} from '../api.js'
 import './RemotePanel.css'
 
-// Remote — everything that works while you're away from the desk, in one tab:
-//   · This phone's agent  (the 24/7 agent with real hands, built into MittiCloud)
-//   · Laptop · ZCode      (ZCode's own Web Remote Control, one tap from the phone)
-//   · Project memory      (project files + coding-agent context stored on the phone,
-//                          resumable from any device — the mitti-bridge CLI uses this)
+// Remote — the connect hub: every way OTHER apps and devices reach this cloud.
+//   · Apps     MCP for AI apps, per-app API keys, the ZCode web remote, SSH
+//   · Devices  project memory + pairing a laptop (the mitti-bridge flow)
+//   · Reach    the real addresses this cloud answers on (tailnet, tunnel, LAN)
+// The agent chat lives in its own Agent tab now — Remote points at it, it
+// doesn't embed it.
 
 const SEG_KEY = 'mitti_remote_seg'
 const ZCODE_KEY = 'mitti_zcode_remote'
@@ -68,9 +82,225 @@ function relPath(f) {
   return (parts.length > 1 ? parts.slice(1) : parts).join('/') || f.name
 }
 
-// --- laptop · ZCode remote control ---
+// one copyable code row + a copy button that tells the truth
+function CodeRow({ text, wrap = false, label = 'Copy' }) {
+  return (
+    <div className={'rp-coderow' + (wrap ? ' wrap' : '')}>
+      <code>{text}</code>
+      <button
+        className="btn iconbtn"
+        aria-label={label}
+        title={label}
+        onClick={async () => {
+          const ok = await copyText(text)
+          toast(ok ? 'Copied' : "Couldn't copy — select it manually", ok ? 'ok' : 'info')
+        }}
+      >
+        <Icon name="copy" size={14} />
+      </button>
+    </div>
+  )
+}
 
-function ZcodeRemote() {
+// --- APPS · card 1: MCP, the door for AI apps ---
+
+function McpCard() {
+  const base = window.location.origin
+  const cmd = 'node <absolute-or-repo>/scripts/mitti-mcp.mjs'
+  // placeholders only — a real key never appears in UI text, ever
+  const config = JSON.stringify(
+    {
+      mcpServers: {
+        mitticloud: {
+          command: 'node',
+          args: ['<absolute-or-repo>/scripts/mitti-mcp.mjs'],
+          env: { MITTI_URL: "<this cloud's address>", MITTI_KEY: 'mitti_...' }
+        }
+      }
+    },
+    null,
+    2
+  )
+  return (
+    <section className="rp-card glass">
+      <div className="rp-card-title">
+        <span className="rp-name">MCP — AI apps connect here</span>
+        <span className="muted rp-sub">
+          Give ZCode, Claude, Cursor — any MCP app — real tools for this cloud: files, photos,
+          sites, live apps, status.
+        </span>
+      </div>
+      <ol className="rp-steps">
+        <li>
+          <div className="rp-step-title">Create a key</div>
+          <div className="muted rp-step-note">One per app — make it in the API keys card just below.</div>
+        </li>
+        <li>
+          <div className="rp-step-title">Point your app at this command</div>
+          <CodeRow text={cmd} label="Copy the command" />
+          <div className="muted rp-step-note">{'with env MITTI_URL=<base url> and MITTI_KEY=<your key>'}</div>
+        </li>
+        <li>
+          <div className="rp-step-title">On this network the cloud is at</div>
+          <CodeRow text={base} label="Copy this cloud's address" />
+        </li>
+      </ol>
+      <details className="rp-advanced">
+        <summary>Advanced</summary>
+        <div className="rp-advanced-body">
+          <CodeRow text={config} wrap label="Copy the MCP config" />
+          <div className="muted rp-step-note">
+            Remote HTTP clients: POST {base}/mcp with header Authorization: Bearer mitti_… —
+            JSON-RPC 2.0, tools/list and tools/call.
+          </div>
+        </div>
+      </details>
+    </section>
+  )
+}
+
+// --- APPS · card 2: per-app API keys ---
+
+function ApiKeysCard() {
+  const [keys, setKeys] = useState(null)
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [created, setCreated] = useState(null) // { key, name } — shown ONCE
+  const [confirmId, setConfirmId] = useState(null)
+  const alive = useRef(true)
+
+  const load = useCallback(() => {
+    fetchClientKeys()
+      .then((k) => alive.current && setKeys(k))
+      .catch(() => alive.current && setKeys([]))
+  }, [])
+
+  useEffect(() => {
+    alive.current = true
+    load()
+    return () => {
+      alive.current = false
+    }
+  }, [load])
+
+  const create = async () => {
+    const n = name.trim()
+    if (!n) {
+      toast('Give the key a name — which app is it for?', 'info')
+      return
+    }
+    setBusy(true)
+    try {
+      const d = await createClientKey(n)
+      setCreated({ key: d.key, name: (d.record && d.record.name) || n })
+      setName('')
+      load()
+    } catch (err) {
+      toast(err.message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const revoke = async (k) => {
+    if (confirmId !== k.id) {
+      setConfirmId(k.id)
+      setTimeout(() => alive.current && setConfirmId((c) => (c === k.id ? null : c)), 3000)
+      return
+    }
+    try {
+      await revokeClientKey(k.id)
+      toast('Key revoked — that app can no longer connect', 'ok')
+      setConfirmId(null)
+      load()
+    } catch (err) {
+      toast(err.message, 'err')
+    }
+  }
+
+  return (
+    <section className="rp-card glass">
+      <div className="rp-card-title">
+        <span className="rp-name">API keys</span>
+        <span className="muted rp-sub">
+          One key per app — revoke anytime. The full key is shown once, at creation.
+        </span>
+      </div>
+
+      {created && (
+        <div className="rp-reveal">
+          <div className="rp-reveal-head">
+            <Icon name="alert" size={14} />
+            <span>Copy it now — this is the only time the full key is shown.</span>
+          </div>
+          <div className="rp-coderow">
+            <code>{created.key}</code>
+            <button
+              className="btn iconbtn"
+              aria-label="Copy the key"
+              title="Copy"
+              onClick={async () => {
+                const ok = await copyText(created.key)
+                toast(
+                  ok ? 'Key copied — paste it into your app now' : "Couldn't copy — select the key manually",
+                  ok ? 'ok' : 'info'
+                )
+              }}
+            >
+              <Icon name="copy" size={14} />
+            </button>
+            <button className="btn" onClick={() => setCreated(null)}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {keys !== null && keys.length > 0 && (
+        <div className="rp-keylist">
+          {keys.map((k) => (
+            <div key={k.id} className="rp-keyrow">
+              <div className="rp-keymeta">
+                <span className="rp-keyname">{k.name}</span>
+                <span className="muted rp-keysub">
+                  created {timeAgo(k.createdAt)} · {k.lastUsed ? 'used ' + timeAgo(k.lastUsed) : 'never used'}
+                </span>
+              </div>
+              {confirmId === k.id ? (
+                <button className="btn btn-danger" onClick={() => revoke(k)}>
+                  Sure?
+                </button>
+              ) : (
+                <button className="btn" onClick={() => revoke(k)}>
+                  Revoke
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="rp-actions">
+        <input
+          placeholder="Which app is this for?"
+          value={name}
+          maxLength={60}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') create()
+          }}
+        />
+        <button className="btn btn-primary" disabled={busy} onClick={create}>
+          <Icon name="plus" size={15} /> Create
+        </button>
+      </div>
+    </section>
+  )
+}
+
+// --- APPS · card 3: the ZCode web remote ---
+
+function ZcodeCard() {
   const [saved, setSaved] = useState(() => {
     try {
       return localStorage.getItem(ZCODE_KEY) || ''
@@ -107,17 +337,13 @@ function ZcodeRemote() {
   }
 
   return (
-    <div className="rp-zcode">
-      <p className="rp-story muted">
-        ZCode on your laptop has a built-in <b>Web Remote Control</b>. Start it there, and ZCode's
-        official web client shows your session — chat, workspace, tasks — on this phone through
-        their own secure relay. MittiCloud keeps it one tap away.
-      </p>
-      <ol className="rp-steps muted">
-        <li>Open ZCode on your laptop.</li>
-        <li>Start the Remote option (Web Remote Control).</li>
-        <li>Copy the link it shows and paste it below.</li>
-      </ol>
+    <section className="rp-card glass">
+      <div className="rp-card-title">
+        <span className="rp-name">ZCode remote</span>
+        <span className="muted rp-sub">
+          ZCode's built-in Web Remote Control — paste the link your laptop's ZCode shows.
+        </span>
+      </div>
       {saved ? (
         <>
           <div className="rp-saved">
@@ -139,17 +365,58 @@ function ZcodeRemote() {
             placeholder="Paste the ZCode remote link or code"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') save()
+            }}
           />
           <button className="btn btn-primary" disabled={!draft.trim()} onClick={save}>
             Save
           </button>
         </div>
       )}
-    </div>
+    </section>
   )
 }
 
-// --- pairing a laptop (the bridge, in plain words) ---
+// --- APPS · card 4: a real shell over Termux's ssh ---
+
+function SshCard() {
+  const [ip, setIp] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetchHostLan()
+      .then((d) => {
+        if (!alive) return
+        const u = (d.urls || [])[0]
+        try {
+          setIp(u ? new URL(u).hostname : null)
+        } catch {
+          setIp(null)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+  return (
+    <section className="rp-card glass">
+      <div className="rp-card-title">
+        <span className="rp-name">SSH — a real shell</span>
+        <span className="muted rp-sub">
+          Termux's own ssh server — the UI stays in your browser, this is the terminal.
+        </span>
+      </div>
+      <div className="rp-ssh-label muted">On the phone (Termux)</div>
+      <CodeRow text="pkg install openssh -y && passwd && sshd" label="Copy the Termux setup command" />
+      <div className="rp-ssh-label muted">From a laptop</div>
+      <CodeRow text={'ssh -p 8022 <user>@' + (ip || '<ip>')} label="Copy the ssh command" />
+      <div className="muted rp-note">The password is the one you set with passwd.</div>
+    </section>
+  )
+}
+
+// --- DEVICES · pairing a laptop (the bridge, in plain words) ---
 
 function PairLaptop() {
   const [pair, setPair] = useState(null)
@@ -196,7 +463,7 @@ function PairLaptop() {
   )
 }
 
-// --- project memory (the bridge, in plain words) ---
+// --- DEVICES · project memory (the bridge, in plain words) ---
 
 function ProjectMemory() {
   const [sessions, setSessions] = useState(null)
@@ -380,81 +647,176 @@ function ProjectMemory() {
           the upload button.
         </div>
       ) : (
-        sessions.map((s) => (
-          <section key={s.id} className="rp-card glass">
-            <div className="rp-card-head">
-              <div className="rp-card-title">
-                <span className="rp-name">{s.name}</span>
-                <span className="muted rp-meta">
-                  {s.fileCount} files · {humanizeBytes(s.contextBytes)} context · {s.chatCount} chats ·{' '}
-                  {timeAgo(s.updatedAt)}
-                </span>
+        <div className="rp-cards stag">
+          {sessions.map((s) => (
+            <section key={s.id} className="rp-card glass">
+              <div className="rp-card-head">
+                <div className="rp-card-title">
+                  <span className="rp-name">{s.name}</span>
+                  <span className="muted rp-meta">
+                    {s.fileCount} files · {humanizeBytes(s.contextBytes)} context · {s.chatCount} chats ·{' '}
+                    {timeAgo(s.updatedAt)}
+                  </span>
+                </div>
+                <div className="rp-card-actions">
+                  {confirmId === s.id ? (
+                    <button className="btn btn-danger" onClick={() => doDelete(s)}>
+                      Sure?
+                    </button>
+                  ) : (
+                    <button className="btn iconbtn btn-danger" aria-label={'Delete ' + s.name} onClick={() => doDelete(s)}>
+                      <Icon name="trash" size={15} />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="rp-card-actions">
-                {confirmId === s.id ? (
-                  <button className="btn btn-danger" onClick={() => doDelete(s)}>
-                    Sure?
-                  </button>
-                ) : (
-                  <button className="btn iconbtn btn-danger" aria-label={'Delete ' + s.name} onClick={() => doDelete(s)}>
-                    <Icon name="trash" size={15} />
-                  </button>
-                )}
+              <div className="rp-actions">
+                <label className="btn">
+                  <Icon name="upload" size={14} /> Upload folder
+                  <input
+                    type="file"
+                    className="rp-file"
+                    webkitdirectory=""
+                    multiple
+                    disabled={busy}
+                    onChange={(e) => doUpload(e, s.id)}
+                  />
+                </label>
+                <button className="btn" disabled={busy} onClick={() => doResume(s)}>
+                  <Icon name="refresh" size={14} /> Copy context + chat
+                </button>
+                <button className="btn" disabled={busy} onClick={() => doDownload(s)}>
+                  <Icon name="download" size={14} /> Download
+                </button>
+                <button className="btn" disabled={busy} onClick={() => doNewChat(s)}>
+                  <Icon name="file" size={14} /> New chat
+                </button>
               </div>
-            </div>
-            <div className="rp-actions">
-              <label className="btn">
-                <Icon name="upload" size={14} /> Upload folder
-                <input
-                  type="file"
-                  className="rp-file"
-                  webkitdirectory=""
-                  multiple
-                  disabled={busy}
-                  onChange={(e) => doUpload(e, s.id)}
-                />
-              </label>
-              <button className="btn" disabled={busy} onClick={() => doResume(s)}>
-                <Icon name="refresh" size={14} /> Copy context + chat
-              </button>
-              <button className="btn" disabled={busy} onClick={() => doDownload(s)}>
-                <Icon name="download" size={14} /> Download
-              </button>
-              <button className="btn" disabled={busy} onClick={() => doNewChat(s)}>
-                <Icon name="file" size={14} /> New chat
-              </button>
-            </div>
-            {resumed && resumed.id === s.id && (
-              <pre className="rp-pre">{resumed.text}</pre>
-            )}
-          </section>
-        ))
+              {resumed && resumed.id === s.id && (
+                <pre className="rp-pre">{resumed.text}</pre>
+              )}
+            </section>
+          ))}
+        </div>
       )}
     </div>
   )
 }
 
+// --- REACH · the real addresses of this cloud ---
+
+function Reach() {
+  const [status, setStatus] = useState(null)
+  const [tunnel, setTunnel] = useState(null)
+  const [lan, setLan] = useState(null)
+  const [settled, setSettled] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    let pending = 3
+    const one = (p, set) => {
+      p.then((d) => alive && set(d)).catch(() => {}).finally(() => {
+        if (alive && --pending === 0) setSettled(true)
+      })
+    }
+    one(fetchStatus(), setStatus)
+    one(fetchTunnel(), setTunnel)
+    one(fetchHostLan(), setLan)
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const rows = []
+  const ts = status && status.tailscale
+  if (ts && ts.running && ts.dnsName) rows.push({ label: 'Tailscale', url: 'https://' + ts.dnsName })
+  if (tunnel && tunnel.running && tunnel.url) rows.push({ label: 'Tunnel', url: tunnel.url })
+  // LAN IPs: /api/host/lan first (it knows the port), status readout as backup
+  const lanUrls = (lan && lan.urls) || (status && status.device && status.device.lanUrls) || []
+  for (const u of lanUrls) {
+    if (u && !rows.some((r) => r.url === u)) rows.push({ label: 'This network', url: u })
+  }
+
+  const copy = async (url) => {
+    const ok = await copyText(url)
+    toast(ok ? 'Address copied' : "Couldn't copy — select it manually", ok ? 'ok' : 'info')
+  }
+  const share = async (url) => {
+    const r = await shareOrCopy(url, 'MittiCloud')
+    if (r === 'copied') toast('Address copied', 'ok')
+    else if (r === 'failed') toast("Couldn't share or copy — long-press the link instead", 'err')
+  }
+
+  return (
+    <div className="rp-cards stag">
+      {rows.map((r) => (
+        <div key={r.url} className="rp-card glass rp-reach-row">
+          <div className="rp-reach-meta">
+            <span className="rp-name">{r.label}</span>
+            <a className="rp-reach-url" href={r.url} target="_blank" rel="noreferrer">
+              {r.url}
+            </a>
+          </div>
+          <div className="rp-reach-actions">
+            <button
+              className="btn iconbtn"
+              aria-label={'Copy the ' + r.label + ' address'}
+              title="Copy"
+              onClick={() => copy(r.url)}
+            >
+              <Icon name="copy" size={15} />
+            </button>
+            <button
+              className="btn iconbtn"
+              aria-label={'Share the ' + r.label + ' address'}
+              title="Share"
+              onClick={() => share(r.url)}
+            >
+              <Icon name="share" size={15} />
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {!settled && rows.length === 0 && (
+        <div className="rp-card glass" aria-hidden="true">
+          <div className="skeleton rp-sk-line" style={{ width: 200 }} />
+        </div>
+      )}
+
+      {settled && rows.length === 0 && (
+        <div className="empty">
+          <div className="btn iconbtn" aria-hidden="true">
+            <Icon name="wifi" size={22} />
+          </div>
+          No addresses yet — your cloud is only on this phone's screen until you connect it to the
+          network.
+        </div>
+      )}
+
+      <div className="muted rp-note">Away from home? Turn on the tunnel — Host → Tools.</div>
+    </div>
+  )
+}
+
 const SEGMENTS = [
-  { id: 'phone', label: "This phone's agent" },
-  { id: 'zcode', label: 'Laptop · ZCode' },
-  { id: 'memory', label: 'Project memory' }
+  { id: 'apps', label: 'Apps' },
+  { id: 'devices', label: 'Devices' },
+  { id: 'reach', label: 'Reach' }
 ]
+// v0.13 segments had the agent embedded — migrate the saved pick to the new map
+const SEG_LEGACY = { phone: 'reach', zcode: 'apps', memory: 'devices' }
 
 export default function RemotePanel() {
   const [seg, setSeg] = useState(() => {
-    // a job sent from Home's command box lands in the agent — open on it
-    let handoff = false
     try {
-      handoff = Boolean(localStorage.getItem('mitti_open_session'))
+      const s = localStorage.getItem(SEG_KEY)
+      if (s && SEG_LEGACY[s]) return SEG_LEGACY[s]
+      if (SEGMENTS.some((x) => x.id === s)) return s
     } catch {
       /* private mode */
     }
-    try {
-      const s = localStorage.getItem(SEG_KEY)
-      return handoff || !SEGMENTS.some((x) => x.id === s) ? 'phone' : s
-    } catch {
-      return 'phone'
-    }
+    return 'apps'
   })
 
   const pick = (id) => {
@@ -466,16 +828,22 @@ export default function RemotePanel() {
     }
   }
 
+  const segIndex = Math.max(
+    0,
+    SEGMENTS.findIndex((s) => s.id === seg)
+  )
+
   return (
     <div className="rp-panel">
       <div className="rp-toolbar">
         <div>
           <div className="rp-title">Remote</div>
-          <div className="rp-subtitle muted">Your agents and your work — from anywhere</div>
+          <div className="rp-subtitle muted">Every way other apps and devices reach this cloud</div>
         </div>
       </div>
 
       <div className="rp-segments" role="tablist" aria-label="Remote sections">
+        <span className="rp-thumb" style={{ '--seg-i': segIndex }} aria-hidden="true" />
         {SEGMENTS.map((s) => (
           <button
             key={s.id}
@@ -489,10 +857,17 @@ export default function RemotePanel() {
         ))}
       </div>
 
-      <div className="rp-body">
-        {seg === 'phone' && <AgentPanel />}
-        {seg === 'zcode' && <ZcodeRemote />}
-        {seg === 'memory' && <ProjectMemory />}
+      <div className="rp-body" key={seg}>
+        {seg === 'apps' && (
+          <div className="rp-cards stag">
+            <McpCard />
+            <ApiKeysCard />
+            <ZcodeCard />
+            <SshCard />
+          </div>
+        )}
+        {seg === 'devices' && <ProjectMemory />}
+        {seg === 'reach' && <Reach />}
       </div>
     </div>
   )

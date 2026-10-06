@@ -13,7 +13,7 @@ const KEEP_FOLDERS = 7;
 const INTERVAL_MS = 6 * 60 * 60 * 1000; // 4 runs a day
 const DATE_DIR_RE = /^\d{4}-\d{2}-\d{2}$/;
 // API keys live on the device and never get copied into backups.
-const SKIP_FILES = new Set(['agent-keys.json', 'cf-token.json']);
+const SKIP_FILES = new Set(['agent-keys.json', 'cf-token.json', 'client-keys.json']);
 
 /** Copy every data/*.json into data/backups/<YYYY-MM-DD>/ (best effort). */
 export function runBackupNow() {

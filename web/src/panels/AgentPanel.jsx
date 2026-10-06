@@ -10,11 +10,8 @@ import {
   deleteAgentSession,
   fetchAgentWorkspaces,
   saveAgentKey,
-  fetchHostLan,
   fetchCliStatus,
-  installCliPreset,
-  fetchStatus,
-  fetchTunnel
+  installCliPreset
 } from '../api.js'
 import './AgentPanel.css'
 
@@ -44,15 +41,12 @@ function Typing({ isCli }) {
   )
 }
 
-export default function AgentPanel() {
+export default function AgentPanel({ onGoTo }) {
   const [providers, setProviders] = useState([])
   const [cliPresets, setCliPresets] = useState([])
   const [cliInstalling, setCliInstalling] = useState(null)
   const [sessions, setSessions] = useState([])
   const [workspaces, setWorkspaces] = useState([])
-  const [lanUrls, setLanUrls] = useState([])
-  const [cloudStatus, setCloudStatus] = useState(null)
-  const [tunnel, setTunnel] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [active, setActive] = useState(null)
   const [setupOpen, setSetupOpen] = useState(false)
@@ -98,9 +92,6 @@ export default function AgentPanel() {
     refreshSessions()
     refreshCli()
     fetchAgentWorkspaces().then(setWorkspaces).catch(() => {})
-    fetchHostLan().then((d) => setLanUrls(d.urls || [])).catch(() => {})
-    fetchStatus().then(setCloudStatus).catch(() => {})
-    fetchTunnel().then(setTunnel).catch(() => {})
   }, [refreshProviders, refreshSessions, refreshCli])
 
   // Home's command box hands its session over through localStorage — open it
@@ -253,15 +244,6 @@ export default function AgentPanel() {
   const showSetup = setupOpen || !activeId
   const messages = (active && active.messages) || []
   const isCliSession = active && active.engine === 'cli'
-  // the honest "reach this agent" line: tailnet name, tunnel hostname, or LAN
-  const ts = cloudStatus && cloudStatus.tailscale
-  const remoteAddr =
-    ts && ts.running && ts.dnsName
-      ? { url: ts.dnsName, via: 'your tailnet' }
-      : tunnel && tunnel.running && tunnel.url
-        ? { url: tunnel.url, via: 'the tunnel' }
-        : null
-  const lanAddr = lanUrls[0] || 'http://<lan-ip>:7333'
   const providerLabel = (id) => {
     const p = providers.find((x) => x.id === id)
     return p ? p.label : id
@@ -313,22 +295,14 @@ export default function AgentPanel() {
           ))}
         </div>
         <div className="ag-247">
-          <Icon name="bot" size={14} />
           <span>
-            Runs 24/7 on this device.{' '}
-            {remoteAddr ? (
-              <>
-                Reach it from anywhere via {remoteAddr.via}: <code>{remoteAddr.url}</code>
-              </>
-            ) : (
-              <>
-                Open it from any browser: <code>{lanAddr}</code>
-                <span className="ag-247-hint">
-                  Away from home? Turn on the tunnel — Host, Tools.
-                </span>
-              </>
-            )}
+            Your agent answers at the addresses in <b>Remote → Reach</b>.
           </span>
+          {typeof onGoTo === 'function' && (
+            <button className="btn" onClick={() => onGoTo('remote')}>
+              Open Remote
+            </button>
+          )}
         </div>
       </aside>
 

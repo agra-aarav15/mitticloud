@@ -3,11 +3,13 @@ import { Icon } from '../icons.jsx'
 import {
   fetchStatus,
   fetchPhotos,
+  fetchApps,
   fetchAgentSessions,
   fetchTasks,
   humanizeUptime,
   timeAgo
 } from '../api.js'
+import { useCountUp } from '../useMotion.js'
 import './HomePanel.css'
 
 // The start screen: a calm premium hero that ticks live, your real stuff as
@@ -34,11 +36,16 @@ export default function HomePanel({ onGoTo }) {
   const [status, setStatus] = useState(null)
   const [statusAt, setStatusAt] = useState(0)
   const [sites, setSites] = useState([])
+  const [apps, setApps] = useState([])
   const [photoCount, setPhotoCount] = useState(null)
   const [taskCount, setTaskCount] = useState(null)
   const [lastSession, setLastSession] = useState(null)
   const [lastSite, setLastSite] = useState(null)
   const [, setTick] = useState(0)
+
+  // real numbers count up instead of popping in — instant under reduced motion
+  const photoN = useCountUp(photoCount || 0)
+  const hostedN = useCountUp(sites.length + apps.length)
 
   // the hero ticks every second — the cloud visibly never sleeps
   useEffect(() => {
@@ -64,6 +71,12 @@ export default function HomePanel({ onGoTo }) {
           .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0]
         setLastSite(newest)
       }
+    } catch {
+      /* skip */
+    }
+    try {
+      const appsList = await fetchApps()
+      setApps(Array.isArray(appsList) ? appsList : [])
     } catch {
       /* skip */
     }
@@ -96,9 +109,11 @@ export default function HomePanel({ onGoTo }) {
     ? Math.max(0, (status.uptimeSec || 0) + Math.floor((Date.now() - statusAt) / 1000))
     : 0
   const running = Boolean(lastSession && lastSession.running)
+  const runningApps = apps.filter((a) => a.state === 'running').length
   const parts = []
   if (sites.length > 0) parts.push(sites.length + (sites.length === 1 ? ' site live' : ' sites live'))
-  if (photoCount > 0) parts.push(photoCount + (photoCount === 1 ? ' photo safe' : ' photos safe'))
+  if (runningApps > 0) parts.push(runningApps + (runningApps === 1 ? ' app running' : ' apps running'))
+  if (photoCount > 0) parts.push(photoN + (photoCount === 1 ? ' photo safe' : ' photos safe'))
   if (lastSession) parts.push('agent ' + (running ? 'working' : 'idle'))
   if (status) parts.push('up ' + humanizeUptime(uptimeSec))
   parts.push(powerLine(battery))
@@ -128,7 +143,7 @@ export default function HomePanel({ onGoTo }) {
           </span>
           <span className="hm-tile-name">Back up photos</span>
           <span className="hm-tile-sub muted">
-            {photoCount > 0 ? photoCount + ' already safe' : 'Free photo vault, unlimited'}
+            {photoCount > 0 ? photoN + ' already safe' : 'Free photo vault, unlimited'}
           </span>
         </button>
         <button className="hm-tile glass" onClick={() => onGoTo('files')}>
@@ -144,19 +159,30 @@ export default function HomePanel({ onGoTo }) {
           </span>
           <span className="hm-tile-name">Host my website</span>
           <span className="hm-tile-sub muted">
-            {sites.length > 0 ? sites.length + ' hosted here' : 'Free, on this phone'}
+            {hostedN > 0
+              ? hostedN + ' hosted here'
+              : 'Sites and node apps, free'}
+          </span>
+        </button>
+        <button className="hm-tile glass" onClick={() => onGoTo('agent')}>
+          <span className="hm-tile-icon">
+            <Icon name="bot" size={22} />
+          </span>
+          <span className="hm-tile-name">Meet your agent</span>
+          <span className="hm-tile-sub muted">
+            {lastSession
+              ? running
+                ? 'Working now'
+                : 'Idle and ready'
+              : 'A real agent, on the phone'}
           </span>
         </button>
         <button className="hm-tile glass" onClick={() => onGoTo('remote')}>
           <span className="hm-tile-icon">
-            <Icon name="bot" size={22} />
+            <Icon name="link" size={22} />
           </span>
-          <span className="hm-tile-name">Remote</span>
-          <span className="hm-tile-sub muted">
-            {lastSession
-              ? 'Your agent — ' + (running ? 'working now' : 'idle')
-              : 'Your agent — give it a job'}
-          </span>
+          <span className="hm-tile-name">Connect your apps</span>
+          <span className="hm-tile-sub muted">ZCode, Claude, any MCP app</span>
         </button>
       </div>
 
@@ -164,7 +190,7 @@ export default function HomePanel({ onGoTo }) {
         <section className="hm-continue glass">
           <div className="hm-label muted">Continue where you left off</div>
           {lastSession && (
-            <button className="hm-row" onClick={() => onGoTo('remote')}>
+            <button className="hm-row" onClick={() => onGoTo('agent')}>
               <Icon name="bot" size={15} />
               <span className="hm-row-main">{lastSession.title}</span>
               <span className="muted">
