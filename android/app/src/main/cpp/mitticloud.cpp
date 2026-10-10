@@ -1,19 +1,22 @@
 // JNI shim: starts the embedded Node runtime (nodejs-mobile libnode.so) on the
-// bundled MittiCloud server. libnode.so exposes node_init/node_start; this file
-// adapts them to the Java NodeBridge.startNative call.
+// bundled MittiCloud server.
+//
+// libnode.so exports node::Start(int argc, char** argv) (mangled
+// _ZN4node5StartEiPPc, verified in the prebuilt arm64 binary). That is the same
+// entry the official nodejs-mobile sample calls. It blocks until Node exits, so
+// NodeBridge runs it on its own thread.
 #include <jni.h>
 #include <android/log.h>
+#include <unistd.h>
 #include <cstdlib>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #define LOG_TAG "MittiCloudNode"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 
-extern "C" {
-// Provided by libnode.so (nodejs-mobile). Declared here so we link against it.
-int node_start(int argc, char *argv[]);
+namespace node {
+int Start(int argc, char *argv[]);
 }
 
 static std::string jstr(JNIEnv *env, jstring s) {
@@ -41,6 +44,6 @@ Java_in_mitticloud_app_NodeBridge_startNative(JNIEnv *env, jclass,
     argv.push_back(nullptr);
 
     LOGI("starting embedded node on port %d", port);
-    int code = node_start(static_cast<int>(args.size()), argv.data());
+    int code = node::Start(static_cast<int>(args.size()), argv.data());
     LOGI("node exited with code %d", code);
 }
