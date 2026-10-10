@@ -5,6 +5,7 @@
 #include <android/log.h>
 #include <cstdlib>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #define LOG_TAG "MittiCloudNode"
