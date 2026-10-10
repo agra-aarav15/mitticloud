@@ -3,8 +3,8 @@ pluginManagement {
         google {
             content {
                 includeGroupByRegex("androidx.*")
-                includeGroupByRegex("com\.android.*")
-                includeGroupByRegex("com\.google.*")
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
             }
         }
         mavenCentral()
@@ -17,8 +17,8 @@ dependencyResolutionManagement {
         google {
             content {
                 includeGroupByRegex("androidx.*")
-                includeGroupByRegex("com\.android.*")
-                includeGroupByRegex("com\.google.*")
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
             }
         }
         mavenCentral()
