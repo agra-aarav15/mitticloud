@@ -455,6 +455,96 @@ function Reach() {
   )
 }
 
+// --- Connect ZCode over SSH: the four fields ZCode's SSH wizard asks for ---
+function SshCard() {
+  const [ssh, setSsh] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const alive = useRef(true)
+
+  const load = useCallback(() => {
+    fetchRemoteSsh()
+      .then((d) => alive.current && setSsh(d))
+      .catch(() => alive.current && setSsh(null))
+  }, [])
+
+  useEffect(() => {
+    alive.current = true
+    load()
+    return () => {
+      alive.current = false
+    }
+  }, [load])
+
+  const toggle = async () => {
+    setBusy(true)
+    try {
+      if (ssh && ssh.enabled) {
+        await disableRemoteSsh()
+        toast('SSH is off', 'ok')
+      } else {
+        await enableRemoteSsh(false)
+        toast('SSH is on — connect from ZCode now', 'ok')
+      }
+      load()
+    } catch (err) {
+      toast(err.message || 'Could not change SSH', 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const copy = async (value, label) => {
+    const ok = await copyText(String(value))
+    toast(ok ? label + ' copied' : "Couldn't copy — select it manually", ok ? 'ok' : 'info')
+  }
+
+  if (!ssh) return null
+  const fields = [
+    { label: 'Host', value: 'your phone or VPS address' },
+    { label: 'Port', value: ssh.port },
+    { label: 'Username', value: ssh.username },
+    { label: 'Password', value: 'your MittiCloud lock token' }
+  ]
+
+  return (
+    <div className="rp-card glass">
+      <div className="rp-name">
+        {ssh.enabled ? 'SSH is on' : 'SSH is off'}
+        <span className="muted"> — port {ssh.port}</span>
+      </div>
+      <p className="muted rp-note">
+        {ssh.enabled
+          ? 'ZCode can connect now. Use the same Wi-Fi, or the tunnel, for the address.'
+          : 'Turn SSH on, then fill these four fields in ZCode.'}
+      </p>
+      <div className="rp-reach-meta">
+        {fields.map((f) => (
+          <div key={f.label} className="rp-reach-row">
+            <span className="rp-name">{f.label}</span>
+            <code>{String(f.value)}</code>
+            {f.label === 'Port' || f.label === 'Username' ? (
+              <button className="btn iconbtn" aria-label={'Copy the ' + f.label} title="Copy" onClick={() => copy(f.value, f.label)}>
+                <Icon name="copy" size={14} />
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <div className="rp-reach-actions">
+        <button className="btn btn-primary" onClick={toggle} disabled={busy}>
+          {ssh.enabled ? 'Turn SSH off' : 'Turn SSH on'}
+        </button>
+        <button className="btn" onClick={load}>
+          Check
+        </button>
+      </div>
+      <p className="muted rp-note">
+        This is a full terminal only on a VPS or in Termux. The bare Android app gives file access (SFTP), not a shell.
+      </p>
+    </div>
+  )
+}
+
 export default function RemotePanel({ onGoTo }) {
   return (
     <div className="rp-panel">

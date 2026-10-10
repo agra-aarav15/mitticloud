@@ -292,3 +292,15 @@ export const revokeClientKey = (id) =>
     method: 'DELETE',
     headers: tokenHeaders()
   }).then(j)
+
+// --- Remote → SSH: the door ZCode's "Remote connection → SSH" method uses ---
+
+export const fetchRemoteSsh = () => fetch('/api/remote/ssh').then(j)
+export const enableRemoteSsh = (lan = false) =>
+  fetch('/api/remote/ssh/enable', {
+    method: 'POST',
+    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ lan })
+  }).then(j)
+export const disableRemoteSsh = () =>
+  fetch('/api/remote/ssh/disable', { method: 'POST', headers: tokenHeaders({ 'Content-Type': 'application/json' }), body: '{}' }).then(j)

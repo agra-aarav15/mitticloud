@@ -21,6 +21,7 @@ import { initSites } from './routes/sites.js';
 import { initAgent } from './routes/agent.js';
 import bridgeRouter from './routes/bridge.js';
 import clientsRouter from './routes/clients.js';
+import remoteRouter from './routes/remote.js';
 import mcpRouter from './routes/mcp.js';
 import { mountApps } from './routes/apps.js';
 import { initApps as bootApps, stopAllApps } from './lib/apprunner.js';
@@ -86,6 +87,7 @@ app.use('/api', lockRouter); // router paths: GET /lock-status, PUT /lock
 app.use('/api/photos', photosRouter);
 app.use('/api/files', filesRouter);
 app.use('/api/clients', clientsRouter); // client keys for MCP + custom apps
+app.use('/api/remote', remoteRouter); // embedded SSH door for ZCode's Remote → SSH
 app.use('/api/host', hostRouter); // LAN URLs + Cloudflare tunnel + load test
 
 // --- MCP over HTTP: AI apps connect with a client key (Bearer mitti_...) —

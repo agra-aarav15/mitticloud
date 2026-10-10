@@ -4,22 +4,22 @@
 export const GUIDE_ARTICLES = [
   {
     id: 'zcode',
-    title: 'Connect ZCode from your phone',
+    title: 'Connect ZCode to your phone or VPS (SSH)',
     intro:
-      "This is ZCode's own feature, called Mobile remote control. MittiCloud is not involved and does not connect to ZCode.",
+      "ZCode's Remote connection, SSH method, connects to MittiCloud. Your project files and the agent's context stay on this device; ZCode works on them over SSH.",
     steps: [
-      'On the laptop, open ZCode with a project open.',
-      'Look at the bottom of the left sidebar, next to your avatar. Tap the phone icon, labelled "Mobile remote control".',
-      'The window starts by itself. Wait until it says "Waiting for phone".',
-      'Scan the QR code with your phone camera. Or tap "Copy link" and open that link in the phone browser.',
-      'Success: your workspace and chats appear on the phone.',
-      'Keep the laptop on and online. Only one phone page works at a time. "Refresh QR" makes a new link. "Stop" ends the session.'
+      'On this phone (Remote tab, step 3) tap "Turn SSH on". The card shows the port and username.',
+      'On the laptop, open ZCode. In the New task box, open "Select project" and choose "Remote connection".',
+      'Pick SSH as the method, then tap Next.',
+      'Fill the four fields with what the Remote tab shows: Host (this phone or VPS address), Port, Username, and Password (your MittiCloud lock token).',
+      'Tap Connect. Wait until it says Connected, then choose the folder to work in.',
+      'Keep this device on and on the same Wi-Fi, or turn on the tunnel for outside access.'
     ],
     ifItFails: [
-      'Check that the laptop is on and online.',
-      'Press "Refresh QR" and scan the new code.',
-      'Update ZCode to the latest version.',
-      'If ZCode asks you to sign in, sign in with your ZCode account.'
+      'Press "Check" in the Remote tab. It says whether SSH is listening.',
+      'The Password is your MittiCloud lock token, not your Wi-Fi password.',
+      'On a phone, the port is 8022 (never 22). On a VPS, the system SSH on port 22 works too.',
+      'The bare Android app gives file access only, not a full shell. For a full terminal use Termux or a VPS.'
     ]
   },
   {
