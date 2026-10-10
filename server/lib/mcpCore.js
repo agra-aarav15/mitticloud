@@ -23,7 +23,7 @@ import {
 } from './apprunner.js';
 import { get as storeGet } from './store.js';
 
-const VERSION = '0.14.0';
+const VERSION = '0.15.0';
 const READ_CAP = 100 * 1024; // read_file returns at most 100 KB of text
 const WRITE_CAP = 200 * 1024; // same ceiling as the editor's save
 const CONTEXT_CAP = 20 * 1024; // memory_context returns at most 20 KB

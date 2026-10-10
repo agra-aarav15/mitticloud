@@ -239,3 +239,43 @@
   padding: 4px 0 0 30px;
   line-height: 1.5;
 }
+
+.gd-articles-title {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 14px 4px 2px;
+}
+
+.gd-label {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 10px 0 2px 30px;
+}
+
+.gd-steps {
+  list-style: none;
+  counter-reset: gd-step;
+}
+
+.gd-steps li {
+  counter-increment: gd-step;
+  position: relative;
+  padding-left: 30px;
+}
+
+.gd-steps li::before {
+  content: counter(gd-step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}

@@ -379,7 +379,43 @@ function send404(res) {
     );
 }
 
-/** Serve one file (or its index.html when the target is a directory). */
+const ENTRY_NAMES = ['index.html', 'index.htm', 'default.html', 'home.html'];
+
+async function listHtmlPages(dirAbs) {
+  const ents = await fsp.readdir(dirAbs, { withFileTypes: true }).catch(() => []);
+  return ents
+    .filter((e) => e.isFile() && /\.html?$/i.test(e.name))
+    .map((e) => e.name)
+    .sort();
+}
+
+/**
+ * The page a folder answers with: a usual entry name first, then the only HTML
+ * file in the folder when there is exactly one. Null otherwise.
+ */
+async function findEntryPage(dirAbs) {
+  for (const n of ENTRY_NAMES) {
+    const st = await fsp.lstat(path.join(dirAbs, n)).catch(() => null);
+    if (st && st.isFile()) return { abs: path.join(dirAbs, n), st };
+  }
+  const htmls = await listHtmlPages(dirAbs);
+  if (htmls.length !== 1) return null;
+  const abs = path.join(dirAbs, htmls[0]);
+  return { abs, st: await fsp.lstat(abs) };
+}
+
+/** Plain links to the HTML pages of a folder that has several and no entry page. */
+async function sendPageList(res, name, dirAbs, rel) {
+  const htmls = await listHtmlPages(dirAbs);
+  if (htmls.length === 0) return send404(res);
+  const base = '/s/' + encodeURIComponent(name) + (rel ? '/' + rel.split('/').map(encodeURIComponent).join('/') : '');
+  const items = htmls
+    .map((f) => '<li><a href="' + esc(base.replace(/\/$/, '') + '/' + encodeURIComponent(f)) + '">' + esc(f) + '</a></li>')
+    .join('');
+  res.type('html').send(page('Pages — MittiHost', '<h1>Pages in this site</h1><ul>' + items + '</ul>'));
+}
+
+/** Serve one file, or the folder's entry page when the target is a directory. */
 async function serveSiteFile(req, res, rel) {
   const name = req.params.name;
   if (!isSiteName(name)) return send404(res);
@@ -394,14 +430,10 @@ async function serveSiteFile(req, res, rel) {
 
   let st = await fsp.lstat(abs).catch(() => null);
   if (st && st.isDirectory()) {
-    const idx = path.join(abs, 'index.html');
-    const idxSt = await fsp.lstat(idx).catch(() => null);
-    if (idxSt && idxSt.isFile()) {
-      abs = idx;
-      st = idxSt;
-    } else {
-      return send404(res); // no directory listings
-    }
+    const entry = await findEntryPage(abs);
+    if (!entry) return sendPageList(res, name, abs, rel);
+    abs = entry.abs;
+    st = entry.st;
   }
   if (!st || st.isSymbolicLink() || !st.isFile()) return send404(res);
 

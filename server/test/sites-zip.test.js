@@ -108,10 +108,40 @@ test('a second upload replaces the site again (no stale index)', async () => {
   );
   assert.equal(status, 200);
   assert.equal(json.files, 1);
-  assert.equal((await api('GET', '/s/ziptest/')).status, 404, 'index.html is gone');
+  const root = await api('GET', '/s/ziptest/');
+  assert.equal(root.status, 200, 'the lone HTML page is the site entry');
+  assert.ok(root.raw.includes('version two'));
   const about = await api('GET', '/s/ziptest/about.html');
   assert.equal(about.status, 200);
   assert.ok(about.raw.includes('version two'));
+});
+
+test('a folder with several HTML pages and no index lists them as links', async () => {
+  await api('POST', '/api/sites', { name: 'multipage' });
+  await api('POST', '/api/sites/multipage/files', {
+    files: [
+      { path: 'a.html', contentBase64: Buffer.from('<p>page a</p>').toString('base64') },
+      { path: 'b.html', contentBase64: Buffer.from('<p>page b</p>').toString('base64') },
+    ],
+  });
+  const root = await api('GET', '/s/multipage/');
+  assert.equal(root.status, 200);
+  assert.ok(root.raw.includes('href="/s/multipage/a.html"'));
+  assert.ok(root.raw.includes('href="/s/multipage/b.html"'));
+});
+
+test('a site with index.html still serves it, and a missing file still 404s', async () => {
+  await api('POST', '/api/sites', { name: 'withindex' });
+  await api('POST', '/api/sites/withindex/files', {
+    files: [
+      { path: 'index.html', contentBase64: Buffer.from('<p>front</p>').toString('base64') },
+      { path: 'other.html', contentBase64: Buffer.from('<p>other</p>').toString('base64') },
+    ],
+  });
+  const root = await api('GET', '/s/withindex/');
+  assert.equal(root.status, 200);
+  assert.ok(root.raw.includes('front'));
+  assert.equal((await api('GET', '/s/withindex/missing.txt')).status, 404);
 });
 
 test('a GitHub-style wrapper folder is unwrapped so /s/<name>/ serves index.html', async (t) => {

@@ -159,7 +159,7 @@ test('tools/call server_status reports the version honestly', async () => {
   const { key } = createKey('status');
   const r = await rpc(key, 'tools/call', { name: 'server_status', arguments: {} });
   const text = r.body.result.content[0].text;
-  assert.match(text, /MittiCloud v0\.14\.0/);
+  assert.match(text, /MittiCloud v0\.15\.0/);
   assert.match(text, /free memory:/);
   assert.equal(r.body.result.isError, undefined);
 });

@@ -45,6 +45,15 @@ export function checkDataFiles() {
   }
 }
 
+// Plain words for the one failure a person can fix: the site is there but has
+// no page at its root.
+function siteHint(status) {
+  if (status === 404) {
+    return "Uploaded, but there is no HTML page in it. Add an .html file at the folder's root.";
+  }
+  return null;
+}
+
 /**
  * Open every hosted site and record whether it really answers. `origin` is
  * the server's own base URL (the route builds it from the request, so any
@@ -66,7 +75,9 @@ export async function checkSites(origin) {
       try {
         const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
         res.body?.cancel?.().catch(() => {});
-        return { name: s.name, status: res.status, up: res.status >= 200 && res.status < 400 };
+        const up = res.status >= 200 && res.status < 400;
+        const hint = up ? undefined : siteHint(res.status);
+        return { name: s.name, status: res.status, up, ...(hint ? { hint } : {}) };
       } catch (err) {
         return { name: s.name, status: null, up: false, error: err.name === 'TimeoutError' ? 'timeout' : 'unreachable' };
       }

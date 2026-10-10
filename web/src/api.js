@@ -27,44 +27,8 @@ export const listFiles = (path = '') =>
 
 export const downloadUrl = (path) => '/api/files/download?path=' + encodeURIComponent(path)
 
-// --- Agent Server (24/7 multi-provider agent) ---
-
-export const fetchAgentProviders = () => fetch('/api/agent/providers').then(j)
-export const saveAgentKey = (providerId, key) =>
-  fetch('/api/agent/keys', {
-    method: 'PUT',
-    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ providerId, key })
-  }).then(j)
-export const fetchAgentWorkspaces = () =>
-  fetch('/api/agent/workspaces').then(j).then((d) => d.workspaces || [])
-export const fetchAgentSessions = () =>
-  fetch('/api/agent/sessions').then(j).then((d) => d.sessions || [])
-export const createAgentSession = (payload) =>
-  fetch('/api/agent/sessions', {
-    method: 'POST',
-    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(payload)
-  }).then(j)
-export const fetchAgentSession = (id) =>
-  fetch('/api/agent/sessions/' + encodeURIComponent(id)).then(j)
-export const sendAgentMessage = (id, text, force = false) =>
-  fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/messages', {
-    method: 'POST',
-    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ text, force })
-  }).then(j)
-export const deleteAgentSession = (id) =>
-  fetch('/api/agent/sessions/' + encodeURIComponent(id), {
-    method: 'DELETE',
-    headers: tokenHeaders()
-  }).then(j)
-export const updateAgentSession = (id, patch) =>
-  fetch('/api/agent/sessions/' + encodeURIComponent(id), {
-    method: 'PATCH',
-    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(patch)
-  }).then(j)
+export const fetchBridgeSessions = () =>
+  fetch('/api/bridge/sessions').then(j).then((d) => d.sessions || [])
 
 // Copy that tells the truth: the dashboard is usually opened over http://LAN
 // where navigator.clipboard does not exist — fall back to execCommand and
@@ -92,15 +56,6 @@ export async function copyText(text) {
   }
 }
 
-// --- CLI agent brains (real agents, running on this device) ---
-
-export const fetchCliStatus = () => fetch('/api/agent/cli/status').then(j)
-export const installCliPreset = (presetId) =>
-  fetch('/api/agent/cli/install', {
-    method: 'POST',
-    headers: tokenHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ presetId })
-  }).then(j)
 
 // --- MittiHost runtime (LAN test + Cloudflare tunnel + load test) ---
 

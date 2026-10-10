@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
 import { GUIDE_STEPS } from '../guides.js'
+import { GUIDE_ARTICLES } from '../guideArticles.js'
 import { fetchStatus, fetchTasks, toast, copyText as copyTextShared } from '../api.js'
 import './GuidesPanel.css'
 
@@ -241,6 +242,47 @@ export default function GuidesPanel({ onGoTo }) {
             </section>
           )
         })}
+
+      <div className="gd-subtitle muted gd-articles-title">How-to guides</div>
+      {GUIDE_ARTICLES.map((a) => {
+        const isOpen = open.has('article-' + a.id)
+        return (
+          <section key={a.id} className="gd-step glass">
+            <div
+              className="gd-head is-clickable"
+              onClick={() => toggleOpen('article-' + a.id)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isOpen}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  toggleOpen('article-' + a.id)
+                }
+              }}
+            >
+              <span className="gd-name">{a.title}</span>
+              <Icon name="chevronUp" size={15} className={'gd-chevron' + (isOpen ? '' : ' is-flip')} />
+            </div>
+            {isOpen && (
+              <div className="gd-body">
+                <div className="gd-note muted">{a.intro}</div>
+                <ol className="gd-points gd-steps">
+                  {a.steps.map((st, j) => (
+                    <li key={j}>{st}</li>
+                  ))}
+                </ol>
+                <div className="gd-label muted">If it doesn't work</div>
+                <ul className="gd-points">
+                  {a.ifItFails.map((st, j) => (
+                    <li key={j}>{st}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )
+      })}
     </div>
   )
 }

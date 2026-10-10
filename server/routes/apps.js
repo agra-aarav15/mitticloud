@@ -32,12 +32,15 @@ import {
   listApps,
   npmInstallAvailable,
   restartApp,
+  runNpmBuild,
   runNpmInstall,
+  setDeployStep,
   startApp,
   stopApp,
   updateApp,
   validName,
 } from '../lib/apprunner.js';
+import { buildQueue, classifyProject } from '../lib/buildqueue.js';
 
 const MAX_ZIP_BYTES = 60 * 1024 * 1024;
 const MAX_INFLATED_BYTES = 200 * 1024 * 1024;
@@ -158,25 +161,50 @@ router.post('/:name/zip', upload.single('zip'), async (req, res, next) => {
 router.post('/:name/deploy', async (req, res, next) => {
   try {
     const name = validName(req.params.name);
-    appDir(name);
+    const dirAbs = appDir(name);
     const wantInstall = req.body?.install !== false;
-    const hasPkg = fs.existsSync(path.join(APPS_DIR, name, 'package.json'));
+    const profile = classifyProject(dirAbs);
+    const hasPkg = fs.existsSync(path.join(dirAbs, 'package.json'));
     let install = null;
-    if (wantInstall && hasPkg) {
-      if (!(await npmInstallAvailable())) {
-        throw new AppError(
-          'npm is not available on this device — install Node.js/npm, or deploy with install:false'
-        );
+    let built = false;
+    // one install or build at a time on the phone — a second project waits its turn
+    setDeployStep(name, 'waiting');
+    const outcome = await buildQueue.enqueue(async () => {
+      if (wantInstall && hasPkg) {
+        setDeployStep(name, 'installing');
+        if (!(await npmInstallAvailable())) {
+          throw new AppError(
+            'npm is not available on this device — install Node.js/npm, or deploy with install:false'
+          );
+        }
+        install = await runNpmInstall(name, { full: profile.hasBuild });
+        if (!install.ok) return { step: 'install', error: install.error || 'npm install failed' };
       }
-      install = await runNpmInstall(name);
-      if (!install.ok) {
-        const e = new Error(install.error || 'npm install failed');
-        e.status = 502;
-        e.expose = true;
-        throw e;
+      if (wantInstall && profile.hasBuild) {
+        setDeployStep(name, 'building');
+        const b = await runNpmBuild(name);
+        if (!b.ok) return { step: 'build', error: b.error || 'npm run build failed' };
+        built = true;
       }
+      return null;
+    }, () => setDeployStep(name, 'waiting'));
+    if (outcome) {
+      setDeployStep(name, 'failed:' + outcome.step);
+      const e = new Error(outcome.error);
+      e.status = 502;
+      e.expose = true;
+      e.step = outcome.step;
+      throw e;
     }
-    const started = await startApp(name);
+    setDeployStep(name, 'starting');
+    let started;
+    try {
+      started = await startApp(name);
+    } catch (err) {
+      setDeployStep(name, 'failed:start');
+      throw err;
+    }
+    setDeployStep(name, null);
     res.json({
       ok: true,
       name,
@@ -184,6 +212,8 @@ router.post('/:name/deploy', async (req, res, next) => {
       port: started.port,
       url: `http://127.0.0.1:${started.port}`,
       installRan: Boolean(install),
+      buildRan: built,
+      kind: profile.startKind,
       entry: started.entry,
     });
   } catch (err) {

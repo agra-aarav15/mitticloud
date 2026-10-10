@@ -17,6 +17,10 @@ import { spawn } from 'node:child_process';
 
 import { DATA_DIR, FILES_DIR, PathError } from './paths.js';
 import { spawnRequestFor } from './runner.js';
+import { classifyProject } from './buildqueue.js';
+import { fileURLToPath } from 'node:url';
+
+const STATIC_SERVER = fileURLToPath(new URL('./staticServe.js', import.meta.url));
 
 export const APPS_DIR = path.join(FILES_DIR, 'apps');
 export const REGISTRY_FILE = path.join(DATA_DIR, 'apps.json');
@@ -264,15 +268,18 @@ export async function startApp(name, { force = false } = {}) {
     );
   }
 
+  const profile = classifyProject(dirAbs);
   const detected = detectEntry(dirAbs);
   const entry = (rec && rec.entry) || (detected && detected.entry);
-  if (!entry) {
-    throw new AppError(
-      'No entry file found — add package.json with a "main", or an index.js / server.js / app.js'
-    );
-  }
-  if (!fs.existsSync(path.join(dirAbs, entry))) {
-    throw new AppError(`Entry file missing: ${entry}`, 404);
+  if (profile.startKind !== 'next' && profile.startKind !== 'static') {
+    if (!entry) {
+      throw new AppError(
+        'No entry file found — add package.json with a "main", or an index.js / server.js / app.js'
+      );
+    }
+    if (!fs.existsSync(path.join(dirAbs, entry))) {
+      throw new AppError(`Entry file missing: ${entry}`, 404);
+    }
   }
 
   const port = await scanFreePort();
@@ -292,17 +299,43 @@ export async function startApp(name, { force = false } = {}) {
     installLog: existing ? existing.installLog : '',
   };
   live.set(name, state);
-  pushLog(state, `starting node ${entry} on port ${port}`);
+  const label =
+    profile.startKind === 'next'
+      ? 'npm start (next)'
+      : profile.startKind === 'static'
+        ? `static ${profile.outputDir}/`
+        : `node ${entry}`;
+  pushLog(state, `starting ${label} on port ${port}`);
 
   // node.exe is a real executable — spawn it DIRECTLY (the cmd.exe shim in
   // runner.js is only for .cmd shims like npm, and an absolute execPath with
   // spaces ("C:\Program Files\...") does not survive the cmd quoting round-trip)
-  const child = spawn(process.execPath, [entry], {
-    cwd: dirAbs,
-    env: buildEnv(rec && rec.env, port),
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  let child;
+  const childEnv = buildEnv(rec && rec.env, port);
+  if (profile.startKind === 'next') {
+    const req = spawnRequestFor('npm', ['start']);
+    child = spawn(req.file, req.args, {
+      cwd: dirAbs,
+      env: childEnv,
+      windowsHide: true,
+      windowsVerbatimArguments: Boolean(req.windowsVerbatimArguments),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } else if (profile.startKind === 'static') {
+    child = spawn(process.execPath, [STATIC_SERVER, path.join(dirAbs, profile.outputDir)], {
+      cwd: dirAbs,
+      env: childEnv,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } else {
+    child = spawn(process.execPath, [entry], {
+      cwd: dirAbs,
+      env: childEnv,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  }
   state.child = child;
 
   child.stdout.on('data', (c) =>
@@ -444,14 +477,18 @@ export function npmInstallAvailable() {
   });
 }
 
-/** Run `npm install --omit=dev` in the app dir. Streams into the install log. */
-export function runNpmInstall(name) {
+/**
+ * Run an npm command in the app dir and stream it into the install log.
+ * `full` installs dev dependencies too — a build needs its build tools.
+ */
+export function runNpmInstall(name, { full = false, args = null } = {}) {
   validName(name);
   const dirAbs = assertDir(name);
   const state = live.get(name) || { logs: [], installLog: '' };
   live.set(name, state); // so installLog() finds it even before a first start
+  const npmArgs = args || ['install', ...(full ? [] : ['--omit=dev']), '--no-audit', '--no-fund'];
   return new Promise((resolve) => {
-    const req = spawnRequestFor('npm', ['install', '--omit=dev', '--no-audit', '--no-fund']);
+    const req = spawnRequestFor('npm', npmArgs);
     const child = spawn(req.file, req.args, {
       cwd: dirAbs,
       windowsHide: true,
@@ -496,6 +533,11 @@ export function runNpmInstall(name) {
   });
 }
 
+/** `npm run build` in the app dir, streamed into the install log. */
+export function runNpmBuild(name) {
+  return runNpmInstall(name, { full: true, args: ['run', 'build'] });
+}
+
 // --- listing / resources ---
 
 function statTree(dirAbs) {
@@ -528,6 +570,15 @@ function statTree(dirAbs) {
 }
 
 /** Registry rows merged with live state + honest disk/ram numbers. */
+// The deploy step a project is in right now, or its failure: 'waiting' |
+// 'installing' | 'building' | 'starting' | 'failed:<step>' | null (idle).
+const deployStep = new Map(); // name -> string
+
+export function setDeployStep(name, step) {
+  if (step) deployStep.set(name, step);
+  else deployStep.delete(name);
+}
+
 export function listApps() {
   const now = Date.now();
   return readRegistry().map((rec) => {
@@ -558,6 +609,7 @@ export function listApps() {
       fileCount: onDisk.files,
       createdAt: rec.createdAt || null,
       updatedAt: rec.updatedAt || null,
+      deployStep: deployStep.get(rec.name) || null,
     };
   });
 }

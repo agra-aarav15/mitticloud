@@ -163,6 +163,21 @@ function siteDiagnosis(h) {
   return null
 }
 
+// The one word a row shows for an app: the deploy step while it is in progress
+// or failed, otherwise its run state. Plain words, no internal state names.
+function appStatusWord(app) {
+  const step = app.deployStep || ''
+  if (step === 'waiting') return 'Waiting for the build before yours'
+  if (step === 'installing') return 'Installing'
+  if (step === 'building') return 'Building'
+  if (step === 'starting') return 'Starting'
+  if (step.startsWith('failed:')) return 'Failed at ' + step.slice(7)
+  if (app.state === 'running') return 'Live'
+  if (app.state === 'starting') return 'Starting'
+  if (app.state === 'crashed') return 'Crashed'
+  return 'Stopped'
+}
+
 export default function HostPanel() {
   const [sites, setSites] = useState(null) // null = loading
   const [apps, setApps] = useState(null)
@@ -415,6 +430,10 @@ export default function HostPanel() {
   const publishApp = async (appName) => {
     const hasPkg =
       picked.kind === 'zip' ? true : picked.files.some((f) => relPath(f) === 'package.json')
+    if (hasPkg && !window.confirm('This takes a few minutes and warms the phone. Start?')) {
+      setProgress('')
+      return
+    }
     setProgress('Creating ' + appName + '…')
     try {
       try {
@@ -675,7 +694,7 @@ export default function HostPanel() {
       <div className="hs-toolbar">
         <div>
           <div className="hs-title">MittiHost</div>
-          <div className="hs-subtitle muted">Sites and live apps, hosted on this phone</div>
+          <div className="hs-subtitle muted">Put a project online, from this phone.</div>
         </div>
       </div>
 
@@ -732,7 +751,7 @@ export default function HostPanel() {
       )}
 
       <section className="hs-block">
-        <div className="hs-label muted">Add a site or app</div>
+        <div className="hs-label muted">Add a project</div>
         <div className="hs-form glass">
           {!picked ? (
             <div className="hs-form-row">
@@ -781,31 +800,16 @@ export default function HostPanel() {
                   spellCheck={false}
                   disabled={publishing}
                 />
-                <div className="hs-kind" role="radiogroup" aria-label="What is this?">
-                  <button
-                    type="button"
-                    className={'hs-kind-btn' + (kind === 'site' ? ' on' : '')}
-                    aria-pressed={kind === 'site'}
-                    onClick={() => setKind('site')}
-                    disabled={publishing}
-                  >
-                    <Icon name="globe" size={14} /> Website
-                  </button>
-                  <button
-                    type="button"
-                    className={'hs-kind-btn' + (kind === 'app' ? ' on' : '')}
-                    aria-pressed={kind === 'app'}
-                    onClick={() => setKind('app')}
-                    disabled={publishing}
-                  >
-                    <Icon name="cpu" size={14} /> Node app
-                  </button>
-                </div>
+                <span className="hs-kind-note muted">
+                  {kind === 'app'
+                    ? 'Detected: a project that runs on the phone. It builds itself if it needs to.'
+                    : 'Detected: a website. Live as soon as it is added.'}
+                </span>
               </div>
               <div className="hs-confirm-row">
                 <button className="btn btn-primary" disabled={publishing} onClick={publish}>
                   {publishing && <span className="spin" aria-hidden="true" />}
-                  {publishing ? 'Publishing…' : kind === 'app' ? 'Deploy app' : 'Publish site'}
+                  {publishing ? 'Adding...' : 'Add project'}
                 </button>
                 <button
                   className="btn"
@@ -853,8 +857,8 @@ export default function HostPanel() {
       />
 
       <section className="hs-block stag">
-        <div className="hs-label muted">Websites</div>
-        {sitesList === null ? (
+        <div className="hs-label muted">Your projects</div>
+        {sitesList === null || appsList === null ? (
           <div className="hs-card glass" aria-hidden="true">
             {[0, 1].map((i) => (
               <div key={i} className="hs-sk-row">
@@ -863,7 +867,7 @@ export default function HostPanel() {
               </div>
             ))}
           </div>
-        ) : sitesList.length === 0 ? (
+        ) : sitesList.length === 0 && appsList.length === 0 ? (
           <div className="empty">
             <div className="btn iconbtn" aria-hidden="true">
               <Icon name="globe" size={22} />
@@ -876,7 +880,7 @@ export default function HostPanel() {
             const files = u && typeof u.files === 'number' ? u.files : site.fileCount
             const bytes = u && typeof u.bytes === 'number' ? u.bytes : site.bytes
             const h = siteHealth[site.name]
-            const diag = siteDiagnosis(h)
+            const diag = (h && h.hint) || siteDiagnosis(h)
             const url = siteUrl(site.name)
             return (
               <section key={site.name} className="hs-card glass">
@@ -956,26 +960,7 @@ export default function HostPanel() {
             )
           })
         )}
-      </section>
-
-      <section className="hs-block stag">
-        <div className="hs-label muted">Live apps</div>
-        {appsList === null ? (
-          <div className="hs-card glass" aria-hidden="true">
-            <div className="hs-sk-row">
-              <div className="skeleton hs-sk-line" style={{ width: 180 }} />
-              <div className="skeleton hs-sk-line" style={{ width: 90 }} />
-            </div>
-          </div>
-        ) : appsList.length === 0 ? (
-          <div className="empty">
-            <div className="btn iconbtn" aria-hidden="true">
-              <Icon name="cpu" size={22} />
-            </div>
-            Host a real Node app — a tiny API, a bot, a backend. It gets its own port and runs
-            24/7 on this phone.
-          </div>
-        ) : (
+        {appsList === null ? null : (
           appsList.map((app) => {
             const url = app.port ? appUrl(app.port) : null
             const isRunning = app.state === 'running'
@@ -989,8 +974,8 @@ export default function HostPanel() {
                       aria-hidden="true"
                     />
                     <span className="hs-name">{app.name}</span>
-                    <span className={'chip ' + (isRunning ? 'chip-ok' : app.state === 'crashed' ? 'chip-warn' : '')}>
-                      {app.state}
+                    <span className={'chip ' + (isRunning ? 'chip-ok' : app.state === 'crashed' || (app.deployStep || '').startsWith('failed') ? 'chip-warn' : '')}>
+                      {appStatusWord(app)}
                     </span>
                     <span className="chip">{app.ramMB != null ? app.ramMB + ' MB' : 'ram —'}</span>
                     <span className="chip">
@@ -1107,8 +1092,8 @@ export default function HostPanel() {
                 </div>
                 <div className="hs-meta">
                   <span className="muted">
-                    Runs on this phone with its own port. Publish to Cloudflare is for static sites —
-                    for a public URL use Tools below. Registered {timeAgo(app.createdAt)}.
+                    Running server — Cloudflare Pages can only host static files. For a public link, use the
+                    tunnel under Tools below. Added {timeAgo(app.createdAt)}.
                   </span>
                 </div>
               </section>
