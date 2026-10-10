@@ -3,7 +3,7 @@ plugins {
 }
 
 val mittiVersion = (rootProject.file("../package.json").readText()
-    .let { Regex("\"version\"\s*:\s*\"([^\"]+)\"").find(it)?.groupValues?.get(1) } ?: "0.0.0")
+    .let { Regex("[\"]version[\"][ ]*:[ ]*[\"]([^\"]+)[\"]").find(it)?.groupValues?.get(1) } ?: "0.0.0")
 
 android {
     namespace = "in.mitticloud.app"
