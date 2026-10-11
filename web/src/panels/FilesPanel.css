@@ -318,7 +318,9 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
 }
 .fl-actions .btn {
   text-decoration: none;
