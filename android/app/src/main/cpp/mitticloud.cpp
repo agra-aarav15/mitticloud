@@ -33,6 +33,7 @@ Java_in_mitticloud_app_NodeBridge_startNative(JNIEnv *env, jclass,
                                               jstring dataDir, jstring vaultDir,
                                               jint port) {
     std::string entryPath = jstr(env, entry);
+    setenv("MITTICLOUD_EMBEDDED", "1", 1);
     setenv("PORT", std::to_string(port).c_str(), 1);
     setenv("MITTICLOUD_DATA_DIR", jstr(env, dataDir).c_str(), 1);
     setenv("MITTICLOUD_VAULT_DIR", jstr(env, vaultDir).c_str(), 1);

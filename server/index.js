@@ -142,11 +142,12 @@ app.use((err, req, res, next) => {
 // --- boot: listen, shutdown hooks, backup timer — only as the main module.
 //     Tests import { app } and listen on their own port. ---
 const IS_MAIN =
-  !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+  process.env.MITTICLOUD_EMBEDDED === '1' ||
+  (!!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href);
 
 if (IS_MAIN) {
   const server = app.listen(PORT, () => {
-    console.log(`MittiCloud v0.17.2 running at http://localhost:${PORT}`);
+    console.log(`MittiCloud v0.17.3 running at http://localhost:${PORT}`);
     for (const { iface, address } of getLanIPs()) {
       console.log(`  also on http://${address}:${PORT} (${iface})`);
     }
