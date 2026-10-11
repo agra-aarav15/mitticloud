@@ -14,7 +14,7 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         applicationId = "in.mitticloud.app"
         minSdk = 24
-        targetSdk = 28
+        targetSdk = 36
         versionCode = 20
         versionName = mittiVersion
     }
