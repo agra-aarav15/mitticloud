@@ -558,7 +558,7 @@ export default function StatusPanel() {
                   className="btn"
                   onClick={() => {
                     setLockMode(lock.locked ? 'clear' : 'set')
-                    setLockTok(lock.locked ? getToken() : '')
+                    setLockTok('')
                   }}
                   disabled={lockBusy}
                 >

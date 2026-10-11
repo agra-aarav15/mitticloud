@@ -290,9 +290,11 @@
   cursor: default;
 }
 .fl-nm {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .fl-ic-dir {
   color: #d4d4d4;

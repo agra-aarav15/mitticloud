@@ -43,6 +43,43 @@ public class CloudService extends Service {
         }
     }
 
+    private final android.os.Handler batteryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable batteryTick = new Runnable() {
+        @Override
+        public void run() {
+            writeBattery();
+            batteryHandler.postDelayed(this, 30000);
+        }
+    };
+
+    /** Write the phone's real battery to data/battery.json, read by the server. */
+    private void writeBattery() {
+        try {
+            android.content.Intent s = registerReceiver(null,
+                new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED));
+            if (s == null) return;
+            int level = s.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+            int scale = s.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+            int status = s.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
+            int plugged = s.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0);
+            int tempTenth = s.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
+            boolean present = s.getBooleanExtra(android.os.BatteryManager.EXTRA_PRESENT, true);
+            boolean charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING
+                || status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                || plugged != 0;
+            int percent = scale > 0 && level >= 0 ? Math.round(level * 100f / scale) : -1;
+            String temp = tempTenth == Integer.MIN_VALUE ? "null" : String.valueOf(tempTenth / 10.0);
+            String json = "{\"level\":" + percent + ",\"charging\":" + charging
+                + ",\"temperature\":" + temp + ",\"mocked\":false,\"present\":" + present + "}";
+            File data = new File(new File(getFilesDir(), "mitti"), "data");
+            data.mkdirs();
+            java.nio.file.Files.write(new File(data, "battery.json").toPath(),
+                json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception ignored) {
+            /* no battery reading this tick; the server keeps the last good value */
+        }
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
@@ -82,6 +119,8 @@ public class CloudService extends Service {
         if (!started) {
             started = true;
             startNode();
+            batteryHandler.removeCallbacks(batteryTick);
+            batteryHandler.post(batteryTick);
         }
         return START_STICKY;
     }
@@ -105,6 +144,7 @@ public class CloudService extends Service {
 
     @Override
     public void onDestroy() {
+        batteryHandler.removeCallbacks(batteryTick);
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         started = false;
         super.onDestroy();

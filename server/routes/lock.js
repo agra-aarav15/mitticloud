@@ -27,7 +27,7 @@ router.put('/lock', (req, res) => {
   // Already locked? Changing the lock needs the current token first.
   if (isLocked() && !verify(req)) {
     return res.status(401).json({
-      error: 'Locked — send the current token in the x-mitti-token header to change it',
+      error: 'Wrong or missing token. Type the token you set, then try again.',
     });
   }
   setLockToken(token);
