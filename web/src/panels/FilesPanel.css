@@ -352,7 +352,7 @@
     display: none;
   }
   .fl-row {
-    grid-template-columns: auto minmax(0, 1fr) 64px auto;
+    grid-template-columns: auto minmax(140px, 1fr) auto auto;
   }
   .fl-actions {
     gap: 6px;
