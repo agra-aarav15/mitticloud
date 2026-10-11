@@ -18,7 +18,8 @@ import {
 import './RemotePanel.css'
 
 // Remote — three plain steps: see this cloud from other devices, bring a
-// laptop's project here, and use ZCode from the phone (ZCode's own feature).
+// laptop's project here, and reach the SSH door from plain SSH clients (ZCode
+// and Cursor themselves need a VPS — their server cannot run inside the app).
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const BATCH_FILES = 25
 const BATCH_BYTES = 40 * 1024 * 1024
@@ -452,7 +453,8 @@ function Reach() {
   )
 }
 
-// --- Connect ZCode over SSH: the four fields ZCode's SSH wizard asks for ---
+// --- SSH door: the four fields an SSH client (including ZCode's wizard, on a
+//     VPS) asks for ---
 function SshCard() {
   const [ssh, setSsh] = useState(null)
   const [busy, setBusy] = useState(false)

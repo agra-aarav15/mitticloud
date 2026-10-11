@@ -5,10 +5,10 @@ No root, no paid services, no command-line experience needed.
 
 ## What this does
 
-MittiCloud runs a small web server inside the Termux app on your old phone.
-Your photos and files stay on the phone itself, and any device on your Wi-Fi
-can reach them through a normal browser — free forever, because the "server"
-is a phone you already own.
+MittiCloud runs a small web server **inside the MittiCloud app** on your old
+phone (or inside Termux, if you prefer the command line). Your photos and files
+stay on the phone itself, and any device on your Wi-Fi can reach them through a
+normal browser — free forever, because the "server" is a phone you already own.
 
 ## What you need
 
@@ -19,7 +19,25 @@ is a phone you already own.
 
 ---
 
-## Step 1 — Install three apps from F-Droid (not the Play Store)
+## Step 1 — Pick how to run it
+
+There are two ways to run MittiCloud on the phone. **Most people want the app.**
+
+**Option A — the MittiCloud app (easiest, no commands).** Skip to the box below,
+then continue at Step 3. Nothing else to install.
+
+> **Get the app**
+> 1. Open the [latest release](https://github.com/agra-aarav15/mitticloud/releases/latest)
+>    on the phone and download `MittiCloud-v*.apk`.
+> 2. Tap it. Android asks once to allow installs from this source — allow it.
+> 3. Open **MittiCloud** and tap **Start MittiCloud 24/7**.
+>
+> That is the whole setup. Android 7 or newer.
+
+**Option B — Termux (advanced, if you want the code on the phone).** Do Step 1B
+and Step 2 below.
+
+## Step 1B — Termux only: install three apps from F-Droid (not the Play Store)
 
 1. On the phone, open the browser and install **F-Droid**: <https://f-droid.org>
 2. From F-Droid, install these three apps:
@@ -36,7 +54,7 @@ is a phone you already own.
 > effectively broken — that version was abandoned years ago. F-Droid is the
 > only maintained source. Same free apps, working builds.
 
-## Step 2 — Download and install MittiCloud
+## Step 2 — Termux only: install MittiCloud
 
 In the Termux app, type these lines one at a time, pressing Enter after each:
 
@@ -66,14 +84,14 @@ Tap **Allow** when Android asks. The dashboard works fine without it.
 
 ## Step 3 — Open your dashboard
 
-On the same phone, open the browser and go to:
-
-<http://localhost:7333>
+**App:** the dashboard opens inside the app after you tap Start.
+**Termux:** on the same phone, open the browser and go to
+<http://localhost:7333>.
 
 You should see the MittiCloud dashboard — battery, storage, photos, files.
 That's it: your cloud is live.
 
-To start it by hand later (for example after opening Termux fresh):
+To start it by hand later (Termux only — for example after opening Termux fresh):
 
 ```bash
 cd mitticloud
@@ -84,9 +102,11 @@ node server/index.js
 
 Android likes to kill background apps. Do these once and your cloud stays up:
 
-1. **Settings → Apps → Termux → Battery → Unrestricted.** On some phones this
-   is App info → Battery → **Allow background activity**, or a "battery
-   optimization" list — make sure Termux is set to **not optimized**.
+1. **Let it run in the background.** In the app, tap **Keep it awake: allow
+   unrestricted battery** and choose **Unrestricted**. In Termux, go to
+   **Settings → Apps → Termux → Battery → Unrestricted** (on some phones it is
+   App info → Battery → **Allow background activity**, or a "battery
+   optimization" list — make sure it is set to **not optimized**).
 2. **Keep the phone plugged in.** A cloud that dies at 15% isn't a cloud.
 3. The **screen can stay off** — that's fine and saves power.
 4. **Heat is the real enemy, not charging:**
@@ -96,8 +116,8 @@ Android likes to kill background apps. Do these once and your cloud stays up:
    - Old batteries are happiest sitting around **40–80% charge** — no need to
      stress about a perfect 100%.
 
-MittiCloud's watchdog warns you on the phone when the battery drops below 20%
-(needs Termux:API installed).
+MittiCloud warns you when the battery drops below 20%. In the app this works out
+of the box; in Termux it needs Termux:API installed.
 
 ## Step 5 — Open your cloud from other devices
 
@@ -118,22 +138,27 @@ minutes.
 
 ## Troubleshooting
 
-**Server unreachable after reboot**
+**Server unreachable after reboot (app)**
+- Open the **MittiCloud** app and tap **Start MittiCloud 24/7** again.
+- Make sure the notification *MittiCloud is running 24/7* is showing — that
+  notification is what keeps the server awake.
+
+**Server unreachable after reboot (Termux)**
 - Open the Termux app once — this alone often brings the server back.
 - Check the log: `tail -n 50 data/server.log` (run from the `mitticloud` folder).
 - Verify Termux:Boot actually ran: open the **Termux:Boot** app and look at
   its log. If it shows nothing: open Termux:Boot once, re-run
   `bash scripts/install.sh`, then reboot and try again.
 
-**Android killed Termux (it just stops)**
-- Do Step 4 properly — battery **Unrestricted** for Termux fixes most kills.
-- Run `termux-wake-lock` inside Termux (the installer runs it for you, but it
-  doesn't survive reinstalling the Termux app).
+**Android killed it (it just stops)**
+- Do Step 4 properly — battery **Unrestricted** fixes most kills.
+- In Termux you can also run `termux-wake-lock` (the installer runs it for you,
+  but it doesn't survive reinstalling the Termux app).
 
-**Can't upload / can't see photos from the phone's gallery**
+**Can't upload / can't see photos from the phone's gallery (Termux)**
 - Run `termux-setup-storage` in Termux and tap **Allow**, then try again.
 
-**"Port already in use" in the log**
+**"Port already in use" in the log (Termux)**
 - An old MittiCloud is probably still running. Stop it and start again:
 
   ```bash

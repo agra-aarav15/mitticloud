@@ -5,15 +5,15 @@
 **Your drawer-phone is a cloud now.**
 
 A free personal cloud — photo vault, file server, websites, live Node apps, and a
-real SSH door for ZCode — that runs on an old Android phone or a small VPS.
-No subscriptions. No paid server. Your files stay where you put them.
+real SSH door for plain SSH clients — that runs on an old Android phone or a
+small VPS. No subscriptions. No paid server. Your files stay where you put them.
 
 *mitti* = soil in Hindi. Your cloud grows at home.
 
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.12-orange)
+![Release](https://img.shields.io/badge/release-v0.17.13-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,8 +56,9 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.17.12
+## What you get in v0.17.13
 
+- **The app is the main path, not Termux.** The phone setup guide now leads with the APK — install, tap Start, done — and keeps Termux as the advanced option. The ZCode/Cursor help no longer implies they run on the phone: the app's SSH door is for plain SSH clients and SFTP, and ZCode and Cursor need a VPS.
 - **The checklist knows where it is running.** MittiCloud reports whether it is the Android app or a Termux install, so the "Living checklist" no longer shows Termux and install steps as forever-pending on the APK — they pass by themselves, and the hints talk about the app instead of hand-installing Termux.
 - **No more lock token.** The web app and its APIs are open on your network, so Upload, Add project, Photos and Files just work — no "enter your access token" banner. The one secret is the SSH password (Status → SSH password, or `MITTI_TOKEN` on a VPS), which is the only thing the SSH door uses.
 - **Live Node apps finally run on the phone.** Hosted apps used to crash the moment they started: the runner spawned the embedded runtime (`libnode.so`), and Android refuses to execute a file in app storage (the child died with SIGABRT). The APK now ships a small launcher (`libmittinode.so`) in its native library folder — the one place Android lets an app execute from — and the runner uses it. Verified on the OnePlus 6T: a hosted Node server started and answered HTTP.
@@ -67,7 +68,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 - **One Add-a-project flow.** Choose a folder or a ZIP. MittiCloud decides whether it is a website or a live app. The status words show what it is doing: Waiting, Installing, Building, Starting, Live, or Failed at install / build / start.
 - **Next.js, built for you.** A project with a `package.json` and a `build` script is installed and built on the device. Builds run one at a time, so a second project waits its turn. A confirm asks before a heavy build: *This takes a few minutes and warms the phone. Start?*
 - **Pages that just work.** A folder with one `.html` file is served as the site. A folder with several pages and no `index.html` shows a plain list of them.
-- **Two plain guides.** Connect ZCode over SSH. Put a Next.js app online without commands.
+- **Two plain guides.** Connect ZCode or Cursor over SSH (on a VPS). Put a Next.js app online without commands.
 - **Photo vault, files, editor, live dashboard, backups, MCP for AI apps** — unchanged from earlier releases.
 
 ## Honest limits
@@ -85,7 +86,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ```
 [ Any device on Wi-Fi / Tailscale / tunnel ]
-        │  HTTP :7333            │  SSH :8022 (ZCode, SFTP)
+        │  HTTP :7333            │  SSH :8022 (plain SSH, SFTP)
         ▼                        ▼
 ┌─────────────────────────────────────────────────────┐
 │  Android APK  ·  Termux  ·  or a VPS (systemd)      │
@@ -108,7 +109,7 @@ No database, no CDN. The dashboard is pre-built into `public/`, so the server ne
 
 ```bash
 npm install
-npm test          # 157 checks, including a real SSH client against the embedded server
+npm test          # 150 checks, including a real SSH client against the embedded server
 cd web && npm run build   # rebuilds public/ (commit the output)
 ```
 
@@ -116,12 +117,13 @@ The Android app is built by [`.github/workflows/apk.yml`](.github/workflows/apk.
 
 ## Roadmap
 
-- [x] ZCode over SSH (embedded SSH server, lock-token auth, jailed SFTP)
+- [x] ZCode over SSH (embedded SSH server, jailed SFTP) — plain SSH clients and SFTP work against the app; ZCode and Cursor themselves need a VPS
 - [x] Android APK, built and signed in CI
 - [x] One-line VPS installer (systemd)
 - [x] Public URLs for MittiHost sites via Cloudflare Tunnel
-- [x] Simple auth token (the Lock)
-- [ ] Phone-verified APK run (next: install on a real device and report)
+- [x] SSH password login (set it in Status → SSH password, or `MITTI_TOKEN`)
+- [x] Phone-verified APK run (install, boot, live battery and a hosted Node app on a OnePlus 6T)
+- [x] Web app with no write-lock — the APIs are open on your network
 - [ ] Full shell over SSH (needs Termux or a VPS; out of scope for the APK)
 - [ ] WebDAV — mount the vault as a drive from any file manager
 - [ ] Load balancing across devices
