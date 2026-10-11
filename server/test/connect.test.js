@@ -159,7 +159,11 @@ test('tools/call server_status reports the version honestly', async () => {
   const { key } = createKey('status');
   const r = await rpc(key, 'tools/call', { name: 'server_status', arguments: {} });
   const text = r.body.result.content[0].text;
-  assert.match(text, /MittiCloud v0\.17\.10/);
+  // Read the version from package.json so a bump never breaks this test.
+  const pkg = JSON.parse(
+    fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
+  );
+  assert.match(text, new RegExp('MittiCloud v' + pkg.version.replace(/\./g, '\\.')));
   assert.match(text, /free memory:/);
   assert.equal(r.body.result.isError, undefined);
 });

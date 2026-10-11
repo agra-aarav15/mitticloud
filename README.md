@@ -13,7 +13,7 @@ No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.10-orange)
+![Release](https://img.shields.io/badge/release-v0.17.11-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,8 +56,9 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.17.10
+## What you get in v0.17.11
 
+- **No more lock token.** The web app and its APIs are open on your network, so Upload, Add project, Photos and Files just work — no "enter your access token" banner. The one secret is the SSH password (Status → SSH password, or `MITTI_TOKEN` on a VPS), which is the only thing the SSH door uses.
 - **Live Node apps finally run on the phone.** Hosted apps used to crash the moment they started: the runner spawned the embedded runtime (`libnode.so`), and Android refuses to execute a file in app storage (the child died with SIGABRT). The APK now ships a small launcher (`libmittinode.so`) in its native library folder — the one place Android lets an app execute from — and the runner uses it. Verified on the OnePlus 6T: a hosted Node server started and answered HTTP.
 - **SSH door for plain SSH clients.** The Remote tab shows the Host, Port, Username and Password (your SSH password). One tap turns the door on, and it works from any SSH client on the same Wi-Fi.
 - **ZCode and Cursor need a VPS.** Both deploy a Linux server onto the machine they connect to. Run the VPS installer on a Linux machine instead.
@@ -66,7 +67,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 - **Next.js, built for you.** A project with a `package.json` and a `build` script is installed and built on the device. Builds run one at a time, so a second project waits its turn. A confirm asks before a heavy build: *This takes a few minutes and warms the phone. Start?*
 - **Pages that just work.** A folder with one `.html` file is served as the site. A folder with several pages and no `index.html` shows a plain list of them.
 - **Two plain guides.** Connect ZCode over SSH. Put a Next.js app online without commands.
-- **Photo vault, files, editor, live dashboard, lock, backups, MCP for AI apps** — unchanged from earlier releases.
+- **Photo vault, files, editor, live dashboard, backups, MCP for AI apps** — unchanged from earlier releases.
 
 ## Honest limits
 
