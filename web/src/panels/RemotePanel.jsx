@@ -18,8 +18,9 @@ import {
 import './RemotePanel.css'
 
 // Remote — three plain steps: see this cloud from other devices, bring a
-// laptop's project here, and reach the SSH door from plain SSH clients (ZCode
-// and Cursor themselves need a VPS — their server cannot run inside the app).
+// laptop's project here, and reach the SSH door (plain SSH clients, plus ZCode
+// and Cursor — their server is JavaScript, so MittiCloud runs it on the phone's
+// own Node).
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const BATCH_FILES = 25
 const BATCH_BYTES = 40 * 1024 * 1024

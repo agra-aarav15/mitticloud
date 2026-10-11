@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.15-orange)
+![Release](https://img.shields.io/badge/release-v0.17.16-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,7 +56,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.17.15
+## What you get in v0.17.16
 
 - **ZCode and Cursor can now connect to the phone.** Their Remote-SSH uploads its own `node` and a JavaScript server, then runs them together. Android cannot execute that uploaded Linux binary, so the session died with "Permission denied". MittiCloud now recognises that exact launch and runs the server with the phone's own Node instead — and finds the real shell and PATH Android needs. Not yet verified end to end on a phone.
 - **The app is the main path, not Termux.** The phone setup guide leads with the APK — install, tap Start, done — and keeps Termux as the advanced option.
@@ -65,7 +65,6 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 - **Live Node apps finally run on the phone.** Hosted apps used to crash the moment they started: the runner spawned the embedded runtime (`libnode.so`), and Android refuses to execute a file in app storage (the child died with SIGABRT). The APK now ships a small launcher (`libmittinode.so`) in its native library folder — the one place Android lets an app execute from — and the runner uses it. Verified on the OnePlus 6T: a hosted Node server started and answered HTTP.
 - **SSH door for plain SSH clients, and for coding agents.** The Remote tab shows the Host, Port, Username and Password (your SSH password). One tap turns the door on; plain SSH and SFTP clients work from any device on the same Wi-Fi, and ZCode or Cursor can deploy their server through it — MittiCloud runs it with the phone's Node because their shipped Linux build cannot run on Android.
 - **The SSH shell resolves the right shell.** Android has no `/bin/sh` (it is `/system/bin/sh`) and its core utils live under `/system/bin`; the shell layer finds a real shell and sets a working PATH, so a login's `mkdir`/`cat`/`tar` commands run instead of dying with ENOENT.
-- **ZCode and Cursor need a VPS.** Both deploy a Linux server onto the machine they connect to. Run the VPS installer on a Linux machine instead.
 - **The APK starts reliably.** Older Android versions (7 to 9) no longer crash the 24/7 service, and the dashboard waits for the server and says what it is doing instead of showing a blank page.
 - **One Add-a-project flow.** Choose a folder or a ZIP. MittiCloud decides whether it is a website or a live app. The status words show what it is doing: Waiting, Installing, Building, Starting, Live, or Failed at install / build / start.
 - **Next.js, built for you.** A project with a `package.json` and a `build` script is installed and built on the device. Builds run one at a time, so a second project waits its turn. A confirm asks before a heavy build: *This takes a few minutes and warms the phone. Start?*
@@ -119,7 +118,7 @@ The Android app is built by [`.github/workflows/apk.yml`](.github/workflows/apk.
 
 ## Roadmap
 
-- [x] ZCode over SSH (embedded SSH server, jailed SFTP) — plain SSH clients and SFTP work against the app; ZCode and Cursor themselves need a VPS
+- [x] ZCode and Cursor over SSH — their server is JavaScript, so it runs on the phone's Node (verified on a VPS; phone run not yet verified end to end)
 - [x] Android APK, built and signed in CI
 - [x] One-line VPS installer (systemd)
 - [x] Public URLs for MittiHost sites via Cloudflare Tunnel
