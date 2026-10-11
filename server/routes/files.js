@@ -15,11 +15,11 @@
 import { Router } from 'express';
 import multer from 'multer';
 import crypto from 'node:crypto';
-import os from 'node:os';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-import { FILES_DIR, resolveSafe, PathError } from '../lib/paths.js';
+import { DATA_DIR, FILES_DIR, resolveSafe, PathError } from '../lib/paths.js';
 import { buildDirZip } from '../lib/dirzip.js';
 
 const router = Router();
@@ -434,9 +434,12 @@ router.post('/delete', async (req, res, next) => {
 
 // Stream to a temp file first, then move into place once the text fields
 // (to/rel) are known. Cross-device moves fall back to copy + unlink.
+// Android has no /tmp, so uploads land in the vault's own temp folder.
+const UPLOAD_TMP_DIR = path.join(DATA_DIR, 'upload-tmp');
+fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
 const tmpUploads = multer({
   storage: multer.diskStorage({
-    destination: os.tmpdir(),
+    destination: UPLOAD_TMP_DIR,
     filename(req, file, cb) {
       cb(null, `mitticloud-upload-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`);
     },
