@@ -8,10 +8,10 @@ export const GUIDE_ARTICLES = [
     intro:
       "ZCode's Remote connection, SSH method, connects to MittiCloud. Your project files and the agent's context stay on this device; ZCode works on them over SSH.",
     steps: [
-      'On this phone (Remote tab, step 3) tap "Turn SSH on". The card shows the port and username.',
+      'On this phone (Remote tab, step 3) tap "Turn SSH on". The card shows the Host address, Port and Username.',
       'On the laptop, open ZCode. In the New task box, open "Select project" and choose "Remote connection".',
       'Pick SSH as the method, then tap Next.',
-      'Fill the four fields with what the Remote tab shows: Host (this phone or VPS address), Port, Username, and Password (your MittiCloud lock token).',
+      'Fill the four fields with what the Remote tab shows: Host (the address on the card), Port, Username, and Password (your MittiCloud lock token).',
       'Tap Connect. Wait until it says Connected, then choose the folder to work in.',
       'Keep this device on and on the same Wi-Fi, or turn on the tunnel for outside access.'
     ],

@@ -167,3 +167,50 @@ test('POST /api/remote/ssh/enable starts it again and the SSH port answers', asy
   assert.equal(r.ok, true, r.error);
   r.client.end();
 });
+
+function run(client, command) {
+  return new Promise((resolve, reject) => {
+    client.exec(command, (err, stream) => {
+      if (err) return reject(err);
+      let out = '';
+      stream.on('data', (d) => (out += d));
+      stream.on('close', (code) => resolve({ out, code }));
+    });
+  });
+}
+
+const POSIX_ONLY = process.platform === 'win32' ? { skip: 'exec and shell are verified on Linux (Docker/CI)' } : {};
+
+test('an exec request runs a real command inside the vault and returns its output', POSIX_ONLY, async () => {
+  const r = await connect({ password: 'correct-horse-battery' });
+  assert.equal(r.ok, true, r.error);
+  const { out, code } = await run(r.client, 'echo exec-ok');
+  assert.equal(code, 0);
+  assert.ok(out.includes('exec-ok'), 'the command output comes back over the channel');
+  r.client.end();
+});
+
+test('a shell channel opens and echoes a command back', POSIX_ONLY, async () => {
+  const r = await connect({ password: 'correct-horse-battery' });
+  assert.equal(r.ok, true, r.error);
+  const shell = await new Promise((resolve, reject) =>
+    r.client.shell((err, s) => (err ? reject(err) : resolve(s)))
+  );
+  const out = await new Promise((resolve) => {
+    let buf = '';
+    shell.on('data', (d) => {
+      buf += d;
+      if (buf.includes('shell-ok')) resolve(buf);
+    });
+    shell.write('echo shell-ok\nexit\n');
+  });
+  assert.ok(out.includes('shell-ok'));
+  r.client.end();
+});
+
+test('the enable route binds the LAN and reports a real address, not loopback', async () => {
+  const { json } = await apiCall('POST', '/api/remote/ssh/enable', {});
+  assert.equal(json.bindHost, '0.0.0.0');
+  assert.ok(json.zcode.host, 'a host is reported');
+  assert.notEqual(json.zcode.host, '127.0.0.1', 'a laptop cannot reach loopback');
+});

@@ -16,6 +16,7 @@ import {
   SSH_DIR,
 } from '../lib/sshserver.js';
 import { isLocked } from '../lib/auth.js';
+import { getLanIPs } from '../lib/net.js';
 
 const router = Router();
 
@@ -37,11 +38,16 @@ function portOpen(port, host = '127.0.0.1') {
 
 function describe(state) {
   const port = state.port || sshPort();
+  // the addresses another device on this network can actually dial
+  const addresses = getLanIPs().map((x) => x.address);
+  const host = state.host && state.host !== '127.0.0.1' && addresses.length ? addresses[0] : '127.0.0.1';
   return {
     enabled: state.running,
     listening: state.listening,
     error: state.error,
-    host: '127.0.0.1',
+    host,
+    addresses,
+    bindHost: state.host,
     port,
     username: sshUser(),
     authMode: isLocked() ? 'lock-token' : 'locked-off',
@@ -49,7 +55,7 @@ function describe(state) {
     fingerprint: state.running ? hostFingerprint() : null,
     hostKeyDir: SSH_DIR,
     // ZCode's SSH fields, exactly as its wizard asks for them
-    zcode: { host: '<your-phone-or-vps-address>', port, username: sshUser(), password: 'your MittiCloud lock token' },
+    zcode: { host, port, username: sshUser(), password: 'your MittiCloud lock token' },
   };
 }
 
@@ -66,7 +72,8 @@ router.get('/ssh', async (req, res, next) => {
 
 router.post('/ssh/enable', (req, res, next) => {
   try {
-    startSsh({ host: req.body?.lan === true ? '0.0.0.0' : '127.0.0.1', port: sshPort() });
+    // LAN by default: a laptop on the same Wi-Fi must reach it. lan:false keeps it on loopback.
+    startSsh({ host: req.body?.lan === false ? '127.0.0.1' : '0.0.0.0', port: sshPort() });
     res.json({ ok: true, ...describe(sshState()) });
   } catch (err) {
     next(err);

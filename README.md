@@ -13,7 +13,7 @@ No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.16-orange)
+![Release](https://img.shields.io/badge/release-v0.17-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,9 +56,10 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.16
+## What you get in v0.17
 
-- **ZCode over SSH, for real.** ZCode's *Remote connection → SSH* method connects to MittiCloud with the four fields it asks for: host, port, username, password. The Remote tab shows them, one tap turns the SSH door on, and nothing else needs installing. Your files and the agent's context stay on this device.
+- **ZCode over SSH, for real.** ZCode's *Remote connection → SSH* method connects to MittiCloud with the four fields it asks for: host, port, username, password. The Remote tab shows the device's LAN address and the other three fields, one tap turns the SSH door on, and nothing else needs installing. The door listens on your Wi-Fi, so a laptop on the same network can reach it. ZCode's shell runs inside the vault folder.
+- **The APK starts reliably.** Older Android versions (7 to 9) no longer crash the 24/7 service, and the dashboard waits for the server and says what it is doing instead of showing a blank page.
 - **One Add-a-project flow.** Choose a folder or a ZIP. MittiCloud decides whether it is a website or a live app. The status words show what it is doing: Waiting, Installing, Building, Starting, Live, or Failed at install / build / start.
 - **Next.js, built for you.** A project with a `package.json` and a `build` script is installed and built on the device. Builds run one at a time, so a second project waits its turn. A confirm asks before a heavy build: *This takes a few minutes and warms the phone. Start?*
 - **Pages that just work.** A folder with one `.html` file is served as the site. A folder with several pages and no `index.html` shows a plain list of them.
@@ -68,12 +69,12 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 ## Honest limits
 
 - **The APK embeds Node 18** (the prebuilt `nodejs-mobile` runtime). MittiCloud declares Node 20 in `package.json`; its server code was checked for Node 20-only APIs and none were found, but the APK is tested on Node 18 only.
-- **The APK gives SFTP file access, not a shell.** For a full terminal, use Termux or a VPS.
+- **The SSH shell runs as the app's own user, not root.** It is locked behind your lock token and off by default. It can only see the vault folder for file access, but a shell can run any program the app's user can run, so keep the lock token secret.
 - **The APK is build-verified, not phone-verified.** The release build compiles, is signed, and contains all three native libraries. It has not been run on a real phone yet. Please report what happens.
 - **Cloudflare Pages hosts static files only.** A running server needs the tunnel for a public link.
 - **Next.js builds run on the device.** They can be slow, and they can fail on a phone with little RAM. A failed build says which step failed.
 - **ZCode's own *Server*, *WSL* and *Docker* methods cannot be joined from MittiCloud.** Only SSH is a real door.
-- **SSH is off by default**, uses port 8022 on a phone (Android blocks port 22 without root), and is never exposed to the LAN unless you turn that on.
+- **SSH is off by default**, uses port 8022 on a phone (Android blocks port 22 without root), and listens on the Wi-Fi only while it is turned on.
 
 ## Architecture
 

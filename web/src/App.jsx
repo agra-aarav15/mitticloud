@@ -109,7 +109,7 @@ export default function App() {
         </main>
 
       <footer className="foot muted">
-        MittiCloud · free &amp; open source · runs on the phone in your drawer · v0.16.0
+        MittiCloud · free &amp; open source · runs on the phone in your drawer · v0.17.0
       </footer>
       </div>
       <Toasts />

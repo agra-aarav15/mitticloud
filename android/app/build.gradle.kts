@@ -8,6 +8,7 @@ val mittiVersion = (rootProject.file("../package.json").readText()
 android {
     namespace = "in.mitticloud.app"
     compileSdk = 36
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }

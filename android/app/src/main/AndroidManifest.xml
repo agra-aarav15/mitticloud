@@ -13,6 +13,7 @@
         android:allowBackup="false"
         android:label="MittiCloud"
         android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.MittiCloud"
         android:usesCleartextTraffic="true">
 

@@ -27,7 +27,7 @@ import java.io.OutputStream;
  */
 public class MainActivity extends Activity {
     private static final String URL = "http://localhost:7333/";
-    private static final String VERSION = "0.16.0";
+    private static final String VERSION = "0.17.0";
     private WebView web;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -82,7 +82,33 @@ public class MainActivity extends Activity {
         Intent svc = new Intent(this, CloudService.class);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
         else startService(svc);
-        handler.postDelayed(() -> web.loadUrl(URL), 2500);
+        waitForServer(0);
+    }
+
+    /** Load the dashboard once the server answers, retrying for about 30 seconds. */
+    private void waitForServer(int attempt) {
+        new Thread(() -> {
+            boolean up = false;
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(URL).openConnection();
+                c.setConnectTimeout(1000);
+                c.setReadTimeout(1000);
+                up = c.getResponseCode() > 0;
+                c.disconnect();
+            } catch (Exception ignored) {
+            }
+            final boolean ready = up;
+            handler.post(() -> {
+                if (ready) {
+                    web.loadUrl(URL);
+                } else if (attempt < 30) {
+                    web.loadData("<body style='background:#000;color:#fff;font-family:sans-serif;padding:24px'>Starting your cloud… (" + (attempt + 1) + "/30)</body>", "text/html", "utf-8");
+                    handler.postDelayed(() -> waitForServer(attempt + 1), 1000);
+                } else {
+                    web.loadData("<body style='background:#000;color:#fff;font-family:sans-serif;padding:24px'>MittiCloud did not start. Tap Start MittiCloud 24/7 to try again.</body>", "text/html", "utf-8");
+                }
+            });
+        }).start();
     }
 
     private void requestBatteryExemption() {

@@ -21,7 +21,8 @@ PORT="${MITTI_PORT:-7333}"
 DRY="${MITTI_DRYRUN:-0}"
 USER_NAME="mitti"
 UNIT="/etc/systemd/system/mitticloud.service"
-# Linux packages put node here (NodeSource and apt both do); never the host's path.
+# The systemd unit runs the node that is actually installed (apt, NodeSource, nvm, or snap),
+# resolved to its real file so the service does not depend on a shell PATH.
 NODE_BIN="/usr/bin/node"
 
 say() { printf '==> %s\n' "$*"; }
@@ -64,6 +65,16 @@ elif [ -d "$DIR/.git" ]; then
   git -C "$DIR" pull --ff-only
 else
   git clone --depth 1 "$REPO" "$DIR"
+fi
+
+if [ "$DRY" != "1" ]; then
+  NODE_BIN="$(readlink -f "$(command -v node)")"
+  case "$NODE_BIN" in
+    /root/*|/home/*)
+      echo "Node is under $NODE_BIN, which the mitti service user cannot read." >&2
+      echo "Install Node 20 system-wide (apt or NodeSource), then run this again." >&2
+      exit 1 ;;
+  esac
 fi
 
 say "Installing production dependencies"

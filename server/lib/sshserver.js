@@ -8,12 +8,15 @@
 // Auth: username MITTI_SSH_USER (default "mitti"); password = the MittiCloud
 // lock token, or any key in data/ssh/authorized_keys. An unlocked cloud with no
 // authorized keys refuses every login — there is no anonymous door.
-// Channels: SFTP only, jailed to the vault. No interactive shell (out of scope).
+// Channels: SFTP and a shell/exec channel. The shell starts inside the vault
+// folder and runs only for an authenticated login. ZCode needs the shell to run
+// the agent on the project.
 import ssh2 from 'ssh2';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 
 import { DATA_DIR, VAULT_DIR, resolveSafe } from './paths.js';
 import { getToken, isLocked } from './auth.js';
@@ -193,6 +196,34 @@ async function statFile(reqid, p) {
   }
 }
 
+// The program a login runs: the platform shell, with an optional one-off command.
+function shellArgs(command) {
+  if (process.platform === 'win32') {
+    return { cmd: 'cmd.exe', args: command ? ['/d', '/c', command] : ['/d', '/q'] };
+  }
+  return { cmd: '/bin/sh', args: command ? ['-c', command] : [] };
+}
+
+// Run one shell or exec request as a child process, with its stdio on the channel.
+function runChild(channel, { command = null } = {}) {
+  const sh = shellArgs(command);
+  const env = { ...process.env, HOME: VAULT_DIR, TERM: 'dumb' };
+  const child = spawn(sh.cmd, sh.args, { cwd: VAULT_DIR, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  child.stdout.on('data', (d) => channel.write(d));
+  child.stderr.on('data', (d) => channel.stderr.write(d));
+  channel.on('data', (d) => child.stdin.write(d));
+  channel.on('end', () => child.stdin.end());
+  child.on('error', () => {
+    channel.exit(127);
+    channel.end();
+  });
+  child.on('close', (code) => {
+    channel.exit(code ?? 0);
+    channel.end();
+  });
+  channel.on('close', () => child.kill());
+}
+
 /** Start the SSH server. Idempotent. Returns the current state. */
 export function startSsh({ host = '127.0.0.1', port = sshPort() } = {}) {
   if (server) return state;
@@ -207,10 +238,12 @@ export function startSsh({ host = '127.0.0.1', port = sshPort() } = {}) {
       client.on('session', (accept) => {
         const session = accept();
         session.on('sftp', (acceptSftp) => handleSftp(acceptSftp));
-        session.on('exec', (acceptExec, reject) => {
-          reject();
+        session.on('exec', (acceptExec, _reject, info) => {
+          runChild(acceptExec(), { command: info.command });
         });
-        session.on('shell', (acceptShell, reject) => reject());
+        session.on('shell', (acceptShell) => {
+          runChild(acceptShell());
+        });
       });
     });
   });

@@ -10,7 +10,10 @@ import {
   shareOrCopy,
   fetchStatus,
   fetchHostLan,
-  fetchTunnel
+  fetchTunnel,
+  fetchRemoteSsh,
+  enableRemoteSsh,
+  disableRemoteSsh
 } from '../api.js'
 import './RemotePanel.css'
 
@@ -482,7 +485,7 @@ function SshCard() {
         await disableRemoteSsh()
         toast('SSH is off', 'ok')
       } else {
-        await enableRemoteSsh(false)
+        await enableRemoteSsh(true)
         toast('SSH is on — connect from ZCode now', 'ok')
       }
       load()
@@ -500,7 +503,7 @@ function SshCard() {
 
   if (!ssh) return null
   const fields = [
-    { label: 'Host', value: 'your phone or VPS address' },
+    { label: 'Host', value: ssh.host },
     { label: 'Port', value: ssh.port },
     { label: 'Username', value: ssh.username },
     { label: 'Password', value: 'your MittiCloud lock token' }
@@ -522,7 +525,7 @@ function SshCard() {
           <div key={f.label} className="rp-reach-row">
             <span className="rp-name">{f.label}</span>
             <code>{String(f.value)}</code>
-            {f.label === 'Port' || f.label === 'Username' ? (
+            {f.label === 'Host' || f.label === 'Port' || f.label === 'Username' ? (
               <button className="btn iconbtn" aria-label={'Copy the ' + f.label} title="Copy" onClick={() => copy(f.value, f.label)}>
                 <Icon name="copy" size={14} />
               </button>
@@ -582,8 +585,9 @@ export default function RemotePanel({ onGoTo }) {
           <span className="rp-name">Use ZCode from this phone</span>
         </div>
         <p className="muted rp-note">
-          ZCode has its own phone feature, called Mobile remote control. MittiCloud does not connect to ZCode.
+          In ZCode, choose Remote connection, then SSH. Fill in the four fields below.
         </p>
+        <SshCard />
         <button className="btn btn-primary" onClick={() => onGoTo && onGoTo('guides')}>
           Open the full ZCode guide
         </button>

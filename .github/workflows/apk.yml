@@ -64,7 +64,6 @@ jobs:
           MITTI_KEYSTORE_PASSWORD: ${{ secrets.MITTI_KEYSTORE_PASSWORD }}
           MITTI_KEY_ALIAS: mitticloud
           MITTI_KEY_PASSWORD: ${{ secrets.MITTI_KEY_PASSWORD }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.0.12077973
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
@@ -82,6 +81,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" --title "MittiCloud ${GITHUB_REF_NAME}" --notes "Signed Android APK for ${GITHUB_REF_NAME}." --verify-tag
           gh release upload "${GITHUB_REF_NAME}" "$APK_NAME" --clobber
 
       - uses: actions/upload-artifact@v4
