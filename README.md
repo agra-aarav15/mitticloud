@@ -13,7 +13,7 @@ No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.5-orange)
+![Release](https://img.shields.io/badge/release-v0.17.6-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,7 +56,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.17.5
+## What you get in v0.17.6
 
 - **SSH door for plain SSH clients.** The Remote tab shows the Host, Port, Username and Password (your lock token). One tap turns the door on, and it works from any SSH client on the same Wi-Fi.
 - **ZCode and Cursor need a VPS.** Both deploy a Linux server onto the machine they connect to. An Android phone cannot run that server: Android blocks executing files from app data, and the server binary is a regular Linux build. Run the VPS installer on a Linux machine instead.

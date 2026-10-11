@@ -486,7 +486,7 @@ function SshCard() {
         toast('SSH is off', 'ok')
       } else {
         await enableRemoteSsh(true)
-        toast('SSH is on — connect from ZCode now', 'ok')
+        toast('SSH is on', 'ok')
       }
       load()
     } catch (err) {
@@ -582,7 +582,7 @@ export default function RemotePanel({ onGoTo }) {
       <section className="rp-step-block">
         <div className="rp-step-head">
           <span className="rp-step-no">3</span>
-          <span className="rp-name">Use ZCode from this phone</span>
+          <span className="rp-name">Use ZCode or Cursor from a VPS</span>
         </div>
         <p className="muted rp-note">
           ZCode and Cursor need a VPS for SSH. Use the VPS installer, then follow the guide.
