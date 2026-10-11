@@ -27,7 +27,7 @@ import java.io.OutputStream;
  */
 public class MainActivity extends Activity {
     private static final String URL = "http://localhost:7333/";
-    private static final String VERSION = "0.17.4";
+    private static final String VERSION = "0.17.5";
     private WebView web;
     private final Handler handler = new Handler(Looper.getMainLooper());
 

@@ -517,8 +517,8 @@ function SshCard() {
       </div>
       <p className="muted rp-note">
         {ssh.enabled
-          ? 'ZCode can connect now. Use the same Wi-Fi, or the tunnel, for the address.'
-          : 'Turn SSH on, then fill these four fields in ZCode.'}
+          ? 'Plain SSH clients can connect now on the same Wi-Fi. ZCode and Cursor need a VPS; see the ZCode guide.'
+          : 'Turn SSH on to let plain SSH clients connect. ZCode and Cursor need a VPS.'}
       </p>
       <div className="rp-reach-meta">
         {fields.map((f) => (
@@ -542,7 +542,7 @@ function SshCard() {
         </button>
       </div>
       <p className="muted rp-note">
-        This is a full terminal only on a VPS or in Termux. The bare Android app gives file access (SFTP), not a shell.
+        The phone gives file access and plain SSH commands. ZCode and Cursor need a VPS.
       </p>
     </div>
   )
@@ -585,7 +585,7 @@ export default function RemotePanel({ onGoTo }) {
           <span className="rp-name">Use ZCode from this phone</span>
         </div>
         <p className="muted rp-note">
-          In ZCode, choose Remote connection, then SSH. Fill in the four fields below.
+          ZCode and Cursor need a VPS for SSH. Use the VPS installer, then follow the guide.
         </p>
         <SshCard />
         <button className="btn btn-primary" onClick={() => onGoTo && onGoTo('guides')}>

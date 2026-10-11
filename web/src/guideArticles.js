@@ -4,22 +4,21 @@
 export const GUIDE_ARTICLES = [
   {
     id: 'zcode',
-    title: 'Connect ZCode to your phone or VPS (SSH)',
+    title: 'Connect ZCode or Cursor to a VPS (SSH)',
     intro:
-      "ZCode's Remote connection, SSH method, connects to MittiCloud. Your project files and the agent's context stay on this device; ZCode works on them over SSH.",
+      "ZCode and Cursor need a small Linux server on the machine they connect to. An Android phone cannot run that server, so this guide is for a VPS. The phone's SSH door works for plain SSH clients only.",
     steps: [
-      'On this phone (Remote tab, step 3) tap "Turn SSH on". The card shows the Host address, Port and Username.',
-      'On the laptop, open ZCode. In the New task box, open "Select project" and choose "Remote connection".',
-      'Pick SSH as the method, then tap Next.',
-      'Fill the four fields with what the Remote tab shows: Host (the address on the card), Port, Username, and Password (your MittiCloud lock token).',
-      'Tap Connect. Wait until it says Connected, then choose the folder to work in.',
-      'Keep this device on and on the same Wi-Fi, or turn on the tunnel for outside access.'
+      'On the VPS, run the MittiCloud VPS installer. It starts MittiCloud as a background service.',
+      'In the Remote tab, tap "Turn SSH on". The card shows the Host address, Port and Username.',
+      'On the laptop, open ZCode or Cursor and choose Remote connection, then SSH.',
+      'Fill the four fields with what the Remote tab shows: Host, Port, Username, and Password (your MittiCloud lock token).',
+      'Tap Connect. Wait until it says Connected, then choose the folder to work in.'
     ],
     ifItFails: [
       'Press "Check" in the Remote tab. It says whether SSH is listening.',
       'The Password is your MittiCloud lock token, not your Wi-Fi password.',
       'On a phone, the port is 8022 (never 22). On a VPS, the system SSH on port 22 works too.',
-      'The bare Android app gives file access only, not a full shell. For a full terminal use Termux or a VPS.'
+      'If ZCode says "Permission denied" for a server file, the machine cannot run that server. Use a VPS, not an Android phone.'
     ]
   },
   {

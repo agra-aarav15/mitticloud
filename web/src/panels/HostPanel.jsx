@@ -9,6 +9,7 @@ import {
   fetchApps,
   createApp,
   uploadAppFiles,
+  uploadAppZip,
   deployApp,
   appAction,
   fetchAppLogs,
@@ -249,7 +250,7 @@ export default function HostPanel() {
       const d = await fetchDeepHealth()
       if (!mountedRef.current) return
       const map = {}
-      for (const r of d.sites?.results || []) map[r.name] = { up: r.up, status: r.status, error: r.error }
+      for (const r of d.sites?.results || []) map[r.name] = { up: r.up, status: r.status, error: r.error, hint: r.hint }
       setSiteHealth(map)
     } catch {
       /* the dots just stay dim */
