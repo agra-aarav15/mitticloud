@@ -76,7 +76,7 @@ jobs:
           MITTI_KEY_PASSWORD: ${{ secrets.MITTI_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease -x lintVitalRelease
+          ./gradlew --no-daemon assembleRelease
 
       - name: Rename and verify the APK
         run: |
