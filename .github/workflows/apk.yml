@@ -44,6 +44,16 @@ jobs:
             cp "$RUNNER_TEMP/nodejs-mobile/bin/$abi/libnode.so" android/app/src/main/jniLibs/$abi/
           done
 
+      - name: Bundle libc++_shared.so from the NDK (libnode.so needs it at runtime)
+        run: |
+          NDK="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
+          for pair in arm64-v8a:aarch64-linux-android armeabi-v7a:arm-linux-androideabi x86_64:x86_64-linux-android; do
+            abi="${pair%%:*}"; triple="${pair##*:}"
+            src=$(find "$NDK/toolchains/llvm/prebuilt" -path "*/sysroot/usr/lib/$triple/libc++_shared.so" | head -1)
+            test -n "$src" || { echo "libc++_shared.so not found for $abi"; exit 1; }
+            cp "$src" "android/app/src/main/jniLibs/$abi/"
+          done
+
       - name: Stage the server into the APK assets
         run: |
           mkdir -p android/app/src/main/assets/mitti
@@ -74,6 +84,9 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           cp "$APK" "MittiCloud-v${VERSION}.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "MittiCloud-v${VERSION}.apk"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libc++_shared.so" || { echo "APK is missing libc++_shared.so for $abi"; exit 1; }
+          done
           echo "APK_NAME=MittiCloud-v${VERSION}.apk" >> "$GITHUB_ENV"
 
       - name: Attach the APK to the release
