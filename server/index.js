@@ -25,7 +25,7 @@ import remoteRouter from './routes/remote.js';
 import mcpRouter from './routes/mcp.js';
 import { mountApps } from './routes/apps.js';
 import { initApps as bootApps, stopAllApps } from './lib/apprunner.js';
-import { lockWrites, isLocked } from './lib/auth.js';
+import { isLocked } from './lib/auth.js';
 import { initBackup, runBackupNow } from './lib/backup.js';
 import {
   DATA_DIR,
@@ -47,38 +47,23 @@ for (const dir of [DATA_DIR, VAULT_DIR, PHOTOS_DIR, FILES_DIR]) {
 const app = express();
 app.disable('x-powered-by');
 
-// --- LOCK (scoped): guard writes on the two routers mounted below the global
-//     parser. Registered BEFORE them so it runs first; the global guard after
-//     express.json covers everything else. Running twice is safe. ---
-app.use('/api/sites', lockWrites);
-app.use('/api/bridge/sessions', lockWrites);
-
 // --- MittiHost (/s, /api/sites) + Live apps (/api/apps) + Cloud Mode
 //     (/api/bridge/sessions) mount BEFORE the global 1MB JSON parser: site
 //     and app uploads carry multi-MB bodies and these set their own limits ---
 initSites(app);
-app.use('/api/apps', lockWrites);
 mountApps(app);
 app.use('/api/bridge/sessions', bridgeRouter);
 
 // --- laptop pairing: the one command a laptop runs to fill a project memory
-//     (GET stays open; the token itself is NEVER returned — if the cloud is
-//     locked the command carries a fill-it-in placeholder) ---
+//     (GET stays open) ---
 app.get('/api/bridge/pairing', (req, res) => {
   res.json({
-    needsToken: isLocked(),
-    command:
-      'node mitti-bridge.mjs push <memory-name> ./your-project-folder' +
-      (isLocked() ? '   (set MITTI_TOKEN=<your access token> first)' : ''),
+    needsToken: false,
+    command: 'node mitti-bridge.mjs push <memory-name> ./your-project-folder',
   });
 });
 
 app.use(express.json({ limit: '1mb' }));
-
-// --- LOCK (global): while a lock token is set, every state-changing API call
-//     needs the x-mitti-token header (or ?token=) — see server/lib/auth.js.
-//     GET/HEAD/OPTIONS and /api/lock(-status) + /api/health stay open. ---
-app.use('/api', lockWrites);
 
 // --- API ---
 app.use('/api/health', healthRouter);
@@ -106,7 +91,6 @@ app.post('/api/backup/run', (req, res, next) => {
 // --- MittiOps: /api/tasks CRUD + scheduler, POST /hook/<webhookId> triggers ---
 // (must mount before the 404 catch-alls below; /hook is a WRITE — a webhook
 // runs task code — so it sits under the lock guard like every other mutation)
-app.use('/hook', lockWrites);
 initTasks(app);
 
 // --- MittiAgent: /api/agent + 60s scheduler (mounts its own router) ---

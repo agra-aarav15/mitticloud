@@ -6,8 +6,8 @@
 // installed. It is OFF by default and never binds a privileged port.
 //
 // Auth: username MITTI_SSH_USER (default "mitti"); password = the MittiCloud
-// lock token, or any key in data/ssh/authorized_keys. An unlocked cloud with no
-// authorized keys refuses every login — there is no anonymous door.
+// SSH password, or any key in data/ssh/authorized_keys. A cloud with no password
+// and no authorized keys refuses every login — there is no anonymous door.
 // Channels: SFTP and a shell/exec channel. The shell starts inside the vault
 // folder and runs only for an authenticated login. ZCode needs the shell to run
 // the agent on the project.
@@ -88,7 +88,7 @@ function keyMatches(presented) {
 export function checkLogin(ctx) {
   if (ctx.username !== sshUser()) return false;
   if (ctx.method === 'password') {
-    if (!isLocked()) return false; // no lock token set: nothing to authenticate with
+    if (!isLocked()) return false; // no SSH password set: nothing to authenticate with
     const token = getToken();
     if (!token || typeof ctx.password !== 'string') return false;
     const a = Buffer.from(ctx.password);

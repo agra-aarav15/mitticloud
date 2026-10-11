@@ -12,9 +12,6 @@
 // Battery law: starting a turn when the device is unplugged and below 30%
 // answers {batteryMode:true,...} so the UI can ask "Run anyway?" — same rule
 // as tasks and the old gates (force:true overrides).
-//
-// Lock law: writes here are state-changing, so while a lock token is set the
-// global guard requires x-mitti-token — visitors can read the chat, not drive it.
 import { Router } from 'express';
 import fs from 'node:fs/promises';
 import path from 'node:path';

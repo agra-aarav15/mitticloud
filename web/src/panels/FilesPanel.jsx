@@ -18,23 +18,6 @@ const formatDate = (ts) => {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-// --- local fetch helpers (api.js is shared; writes here attach the lock token) ---
-const TOKEN_KEY = 'mitti_token'
-const getToken = () => {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY) || ''
-  } catch {
-    return ''
-  }
-}
-const storeToken = (t) => {
-  try {
-    if (t) sessionStorage.setItem(TOKEN_KEY, t)
-    else sessionStorage.removeItem(TOKEN_KEY)
-  } catch {
-    /* ignore */
-  }
-}
 
 async function j(res) {
   const d = await res.json().catch(() => ({}))
@@ -42,22 +25,8 @@ async function j(res) {
   return d
 }
 
-// Wraps fetch for writes: attaches the lock token, and on 401 clears it so the
-// inline token bar re-asks on the next render.
-const authedFetch = (url, opts = {}) =>
-  fetch(url, {
-    ...opts,
-    headers: { 'x-mitti-token': getToken(), ...(opts.headers || {}) }
-  }).then((res) => {
-    if (res.status === 401) {
-      storeToken('')
-      throw Object.assign(new Error('Locked — enter your access token'), { status: 401 })
-    }
-    return res
-  })
-
 const jsonReq = (url, body) =>
-  authedFetch(url, {
+  fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -69,7 +38,7 @@ const moveReq = (from, toDir) => jsonReq('/api/files/move', { from, toDir })
 const copyReq = (from, toDir) => jsonReq('/api/files/copy', { from, toDir })
 const deleteManyReq = (paths) => jsonReq('/api/files/delete', { paths })
 const deleteReq = (p, force = false) =>
-  authedFetch('/api/files?path=' + encodeURIComponent(p) + (force ? '&force=true' : ''), {
+  fetch('/api/files?path=' + encodeURIComponent(p) + (force ? '&force=true' : ''), {
     method: 'DELETE'
   }).then(j)
 
@@ -78,7 +47,7 @@ const uploadReq = (file, to, rel) => {
   fd.append('file', file)
   fd.append('to', to)
   fd.append('rel', rel)
-  return authedFetch('/api/files/upload-multipart', { method: 'POST', body: fd }).then(j)
+  return fetch('/api/files/upload-multipart', { method: 'POST', body: fd }).then(j)
 }
 
 const searchReq = (q) =>
@@ -111,8 +80,6 @@ export default function FilesPanel() {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState('')
   const [usage, setUsage] = useState(null)
-  const [needToken, setNeedToken] = useState(false)
-  const [tokenDraft, setTokenDraft] = useState('')
   const [codeFile, setCodeFile] = useState(null) // vault-relative path of the open editor
   const mountedRef = useRef(true)
   const seqRef = useRef(0)
@@ -144,16 +111,6 @@ export default function FilesPanel() {
 
   useEffect(() => {
     mountedRef.current = true
-    // If the vault is locked and we hold no token, surface the inline token bar
-    // before the first write fails. The endpoint may not exist yet — stay silent.
-    ;(async () => {
-      try {
-        const d = await fetch('/api/lock-status').then(j)
-        if (mountedRef.current && d && d.locked && !getToken()) setNeedToken(true)
-      } catch {
-        /* not ready yet */
-      }
-    })()
     return () => {
       mountedRef.current = false
       clearTimeout(bulkTimerRef.current)
@@ -206,16 +163,6 @@ export default function FilesPanel() {
 
   const segments = path.split('/').filter(Boolean)
 
-  const saveToken = (e) => {
-    e.preventDefault()
-    const t = tokenDraft.trim()
-    if (!t) return
-    storeToken(t)
-    setTokenDraft('')
-    setNeedToken(false)
-    toast('Token saved', 'ok')
-  }
-
   const submitFolder = async (e) => {
     e.preventDefault()
     const name = newName.trim()
@@ -233,7 +180,6 @@ export default function FilesPanel() {
       load(path)
       loadUsage()
     } catch (err) {
-      if (err && err.status === 401) setNeedToken(true)
       toast(err && err.message ? err.message : 'Could not create the folder.', 'err')
     } finally {
       if (mountedRef.current) setCreating(false)
@@ -249,11 +195,6 @@ export default function FilesPanel() {
       load(path)
       loadUsage()
     } catch (err) {
-      if (err && err.status === 401) {
-        setNeedToken(true)
-        toast(err.message || 'Locked — enter your access token.', 'err')
-        return
-      }
       const msg = ((err && err.message) || '').toLowerCase()
       if (err && err.status === 400 && msg.includes('not empty')) {
         if (window.confirm('"' + entry.name + '" is not empty. Delete the folder and everything inside it?')) {
@@ -263,7 +204,6 @@ export default function FilesPanel() {
             load(path)
             loadUsage()
           } catch (err2) {
-            if (err2 && err2.status === 401) setNeedToken(true)
             toast(err2 && err2.message ? err2.message : 'Could not delete the folder.', 'err')
           }
         }
@@ -309,7 +249,6 @@ export default function FilesPanel() {
       loadUsage()
     } catch (err) {
       if (!mountedRef.current) return
-      if (err && err.status === 401) setNeedToken(true)
       else if (err && err.status === 409) toast('That name already exists in the target folder.', 'err')
       else toast(err && err.message ? err.message : 'Could not ' + (MODE_LABEL[ed.mode] || 'update') + ' the item.', 'err')
       setEditing((cur) => (cur && cur.name === ed.name ? { ...cur, busy: false } : cur))
@@ -344,7 +283,6 @@ export default function FilesPanel() {
       load(path)
       loadUsage()
     } catch (err) {
-      if (err && err.status === 401) setNeedToken(true)
       toast(err && err.message ? err.message : 'Could not delete the selected items.', 'err')
     }
   }
@@ -364,7 +302,6 @@ export default function FilesPanel() {
         ok++
       } catch (err) {
         if (err && err.status === 401) {
-          if (mountedRef.current) setNeedToken(true)
           failed = files.length - i
           break
         }
@@ -395,24 +332,6 @@ export default function FilesPanel() {
 
   return (
     <div className="fl-panel">
-      {needToken && (
-        <form className="banner" onSubmit={saveToken}>
-          <Icon name="lock" size={15} />
-          <span className="fl-token-label">Vault is locked — enter your access token to make changes.</span>
-          <input
-            className="fl-token-input"
-            type="password"
-            value={tokenDraft}
-            onChange={(e) => setTokenDraft(e.target.value)}
-            placeholder="access token"
-            aria-label="Access token"
-            autoFocus
-          />
-          <button type="submit" className="btn btn-primary fl-token-btn" disabled={!tokenDraft.trim()}>
-            Save
-          </button>
-        </form>
-      )}
 
       {usage && (
         <div className="fl-usage">

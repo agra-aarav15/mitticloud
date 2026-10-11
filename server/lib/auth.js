@@ -1,14 +1,12 @@
-// Optional write-lock for the MittiCloud API.
+// SSH access token (the SSH password).
 //
-// A single lock token, managed through the API, that (when set) gates every
-// state-changing request behind an `x-mitti-token` header (or ?token= query).
-// Reads stay open; only writes need the token. Sources of truth, in order:
+// The one token that guards MittiCloud is the SSH password (sshserver.js). The
+// web app, the file, photo and host APIs stay open with no token. Sources, in order:
 //   1. env MITTI_TOKEN — wins whenever it is set (non-empty), e.g. on a VPS
 //   2. data/settings.json { lockToken: "<secret>" } — set via PUT /api/lock
-// An empty settings lockToken disables the lock.
+// An empty token means SSH needs no password.
 //
-// The token itself NEVER appears in an API response — only its presence
-// (locked: true/false) and where it comes from (source: 'env'|'settings'|null).
+// The token itself NEVER appears in an API response.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -85,24 +83,3 @@ export function verify(req) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-// Paths that stay writable (or are GET-only by nature) even when locked:
-// the lock's own management routes and the health checks.
-const OPEN_PATHS = new Set(['/api/lock-status', '/api/lock']);
-
-/**
- * Express middleware: block state-changing requests while locked unless the
- * request carries the token. Mount it before the API routers (plus scoped
- * copies before the early-mounted sites/bridge routers — safe to run twice).
- */
-export function lockWrites(req, res, next) {
-  if (!isLocked()) return next();
-  const method = req.method.toUpperCase();
-  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
-  // originalUrl (not the mount-relative url) so scoped mounts see the full path
-  const p = String(req.originalUrl || req.url).split('?')[0];
-  if (OPEN_PATHS.has(p) || p.startsWith('/api/health')) return next();
-  if (verify(req)) return next();
-  res
-    .status(401)
-    .json({ error: 'Locked — this cloud needs its token to change anything' });
-}

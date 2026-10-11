@@ -115,7 +115,7 @@ async function toolWriteFile(args, root) {
 }
 
 // The agent's shell commands get a scrubbed environment: secrets the server
-// holds (lock token, API keys, battery hook) never leak into model-driven
+// holds (SSH password, API keys, battery hook) never leak into model-driven
 // child processes.
 const SCRUB_ENV = /TOKEN|KEY|SECRET|PASSWORD|MITTI_FAKE/i;
 

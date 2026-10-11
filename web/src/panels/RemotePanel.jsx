@@ -112,12 +112,6 @@ function PairLaptop() {
           <Icon name="copy" size={14} />
         </button>
       </div>
-      {pair.needsToken && (
-        <div className="muted rp-pair-note">
-          Your cloud is locked — set MITTI_TOKEN=&lt;your access token&gt; in the same terminal
-          first.
-        </div>
-      )}
     </div>
   )
 }
@@ -506,7 +500,7 @@ function SshCard() {
     { label: 'Host', value: ssh.host },
     { label: 'Port', value: ssh.port },
     { label: 'Username', value: ssh.username },
-    { label: 'Password', value: 'your MittiCloud lock token' }
+    { label: 'Password', value: 'your MittiCloud SSH password' }
   ]
 
   return (

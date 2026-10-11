@@ -3,60 +3,28 @@ import { Icon } from '../icons.jsx'
 import { fetchPhotos, humanizeBytes, toast } from '../api.js'
 import './PhotosPanel.css'
 
-// --- local fetch helpers (api.js is shared; writes here attach the lock token) ---
-const TOKEN_KEY = 'mitti_token'
-const getToken = () => {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY) || ''
-  } catch {
-    return ''
-  }
-}
-const storeToken = (t) => {
-  try {
-    if (t) sessionStorage.setItem(TOKEN_KEY, t)
-    else sessionStorage.removeItem(TOKEN_KEY)
-  } catch {
-    /* ignore */
-  }
-}
-
 async function j(res) {
   const d = await res.json().catch(() => ({}))
   if (!res.ok) throw Object.assign(new Error(d.error || res.statusText), { status: res.status })
   return d
 }
 
-// Wraps fetch for writes: attaches the lock token, and on 401 clears it so the
-// inline token bar re-asks on the next render.
-const authedFetch = (url, opts = {}) =>
-  fetch(url, {
-    ...opts,
-    headers: { 'x-mitti-token': getToken(), ...(opts.headers || {}) }
-  }).then((res) => {
-    if (res.status === 401) {
-      storeToken('')
-      throw Object.assign(new Error('Locked — enter your access token'), { status: 401 })
-    }
-    return res
-  })
-
 // One request per photo — the endpoint answers {ok, duplicate, path}.
 const uploadOneReq = (file) => {
   const fd = new FormData()
   fd.append('photo', file)
-  return authedFetch('/api/photos/one', { method: 'POST', body: fd }).then(j)
+  return fetch('/api/photos/one', { method: 'POST', body: fd }).then(j)
 }
 
 const setFavoriteReq = (path, favorite) =>
-  authedFetch('/api/photos/' + encodeURIComponent(path) + '/favorite', {
+  fetch('/api/photos/' + encodeURIComponent(path) + '/favorite', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ favorite })
   }).then(j)
 
 const deletePhotoReq = (path) =>
-  authedFetch('/api/photos?path=' + encodeURIComponent(path), { method: 'DELETE' }).then(j)
+  fetch('/api/photos?path=' + encodeURIComponent(path), { method: 'DELETE' }).then(j)
 
 const PHOTOS_ARCHIVE_URL = '/api/photos/archive'
 
@@ -64,8 +32,6 @@ export default function PhotosPanel() {
   const [photos, setPhotos] = useState(null) // null = first load (skeletons)
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState('')
-  const [needToken, setNeedToken] = useState(false)
-  const [tokenDraft, setTokenDraft] = useState('')
   const inputRef = useRef(null)
   const mountedRef = useRef(true)
 
@@ -84,30 +50,10 @@ export default function PhotosPanel() {
   useEffect(() => {
     mountedRef.current = true
     load()
-    // If the vault is locked and we hold no token, surface the inline token bar
-    // before the first write fails. The endpoint may not exist yet — stay silent.
-    ;(async () => {
-      try {
-        const d = await fetch('/api/lock-status').then(j)
-        if (mountedRef.current && d && d.locked && !getToken()) setNeedToken(true)
-      } catch {
-        /* not ready yet */
-      }
-    })()
     return () => {
       mountedRef.current = false
     }
   }, [load])
-
-  const saveToken = (e) => {
-    e.preventDefault()
-    const t = tokenDraft.trim()
-    if (!t) return
-    storeToken(t)
-    setTokenDraft('')
-    setNeedToken(false)
-    toast('Token saved', 'ok')
-  }
 
   // Upload loop: one POST per photo, then a duplicates-skipped toast at the end.
   const onPick = async (e) => {
@@ -124,12 +70,7 @@ export default function PhotosPanel() {
         const r = await uploadOneReq(files[i])
         if (r && r.duplicate) dup++
         else ok++
-      } catch (err) {
-        if (err && err.status === 401) {
-          if (mountedRef.current) setNeedToken(true)
-          failed = files.length - i
-          break
-        }
+      } catch {
         failed++
       }
     }
@@ -156,7 +97,6 @@ export default function PhotosPanel() {
       toast('Photo deleted', 'ok')
       load()
     } catch (err) {
-      if (err && err.status === 401) setNeedToken(true)
       toast(err && err.message ? err.message : 'Could not delete the photo.', 'err')
     }
   }
@@ -170,7 +110,6 @@ export default function PhotosPanel() {
     } catch (err) {
       if (!mountedRef.current) return
       setPhotos((ps) => (ps || []).map((x) => (x.path === p.path ? { ...x, favorite: !next } : x)))
-      if (err && err.status === 401) setNeedToken(true)
       toast(err && err.message ? err.message : 'Could not update the favorite.', 'err')
     }
   }
@@ -179,25 +118,6 @@ export default function PhotosPanel() {
 
   return (
     <div className="ph-panel">
-      {needToken && (
-        <form className="banner" onSubmit={saveToken}>
-          <Icon name="lock" size={15} />
-          <span className="ph-token-label">Vault is locked — enter your access token to make changes.</span>
-          <input
-            className="ph-token-input"
-            type="password"
-            value={tokenDraft}
-            onChange={(e) => setTokenDraft(e.target.value)}
-            placeholder="access token"
-            aria-label="Access token"
-            autoFocus
-          />
-          <button type="submit" className="btn btn-primary ph-token-btn" disabled={!tokenDraft.trim()}>
-            Save
-          </button>
-        </form>
-      )}
-
       <div className="ph-toolbar">
         <div className="ph-actions">
           <button
@@ -206,7 +126,7 @@ export default function PhotosPanel() {
             disabled={uploading}
           >
             {uploading ? <span className="ph-spinner" aria-hidden="true" /> : <Icon name="upload" size={16} />}
-            {uploading ? 'Uploading…' : 'Upload Photos'}
+            {uploading ? 'Uploading...' : 'Upload Photos'}
           </button>
           <input
             ref={inputRef}

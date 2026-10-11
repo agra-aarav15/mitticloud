@@ -26,7 +26,7 @@ import './HostPanel.css'
 // MittiHost — host static sites AND real Node apps from this phone, free.
 // One add flow (folder or ZIP, name auto-filled), a real LIVE moment, site
 // cards that open/share like links, app cards with logs/env/restart, and
-// every write attached to the lock token. Upload progress is inline text so
+// every write is a plain fetch. Upload progress is inline text so
 // it stays visible while batches are in flight.
 
 const POLL_MS = 30000
@@ -36,53 +36,23 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024 // server refuses files over 2 MB (static
 const BATCH_FILES = 20
 const BATCH_BYTES = 16 * 1024 * 1024 // stay under the server's 25 MB/request cap
 
-// --- local fetch helpers (api.js is shared; writes here attach the lock token) ---
-const TOKEN_KEY = 'mitti_token'
-const getToken = () => {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY) || ''
-  } catch {
-    return ''
-  }
-}
-const storeToken = (t) => {
-  try {
-    if (t) sessionStorage.setItem(TOKEN_KEY, t)
-    else sessionStorage.removeItem(TOKEN_KEY)
-  } catch {
-    /* ignore */
-  }
-}
-
 async function j(res) {
   const d = await res.json().catch(() => ({}))
   if (!res.ok) throw Object.assign(new Error(d.error || res.statusText), { status: res.status })
   return d
 }
 
-const authedFetch = (url, opts = {}) =>
-  fetch(url, {
-    ...opts,
-    headers: { 'x-mitti-token': getToken(), ...(opts.headers || {}) }
-  }).then((res) => {
-    if (res.status === 401) {
-      storeToken('')
-      throw Object.assign(new Error('Locked — enter your access token'), { status: 401 })
-    }
-    return res
-  })
-
 const fetchSites = () => fetch('/api/sites').then(j).then((d) => d.sites || [])
 
 const createSite = (name) =>
-  authedFetch('/api/sites', {
+  fetch('/api/sites', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
   }).then(j)
 
 const uploadSiteFiles = (name, files) =>
-  authedFetch('/api/sites/' + encodeURIComponent(name) + '/files', {
+  fetch('/api/sites/' + encodeURIComponent(name) + '/files', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ files })
@@ -91,7 +61,7 @@ const uploadSiteFiles = (name, files) =>
 const uploadSiteZip = (name, file) => {
   const fd = new FormData()
   fd.append('zip', file)
-  return authedFetch('/api/sites/' + encodeURIComponent(name) + '/zip', {
+  return fetch('/api/sites/' + encodeURIComponent(name) + '/zip', {
     method: 'POST',
     body: fd
   }).then(j)
@@ -100,7 +70,7 @@ const uploadSiteZip = (name, file) => {
 const siteUsageReq = (name) => fetch('/api/sites/' + encodeURIComponent(name) + '/usage').then(j)
 
 const deleteSite = (name) =>
-  authedFetch('/api/sites/' + encodeURIComponent(name), { method: 'DELETE' }).then(j)
+  fetch('/api/sites/' + encodeURIComponent(name), { method: 'DELETE' }).then(j)
 
 // Read one File as base64 (no prefix) via FileReader.
 function readAsBase64(file) {
@@ -184,8 +154,6 @@ export default function HostPanel() {
   const [apps, setApps] = useState(null)
   const [siteHealth, setSiteHealth] = useState({}) // name -> {up, status}
   const [usageByName, setUsageByName] = useState({})
-  const [needToken, setNeedToken] = useState(false)
-  const [tokenDraft, setTokenDraft] = useState('')
 
   // add flow
   const [picked, setPicked] = useState(null) // {kind:'folder'|'zip', files?, file?, suggested}
@@ -261,14 +229,6 @@ export default function HostPanel() {
     mountedRef.current = true
     load()
     loadHealth()
-    ;(async () => {
-      try {
-        const d = await fetch('/api/lock-status').then(j)
-        if (mountedRef.current && d && d.locked && !getToken()) setNeedToken(true)
-      } catch {
-        /* not ready yet */
-      }
-    })()
     const siteTimer = setInterval(() => {
       load(false)
       loadHealth()
@@ -305,16 +265,6 @@ export default function HostPanel() {
   useEffect(() => {
     if (openLogs && !(apps || []).some((a) => a.name === openLogs)) setOpenLogs(null)
   }, [apps, openLogs])
-
-  const saveToken = (e) => {
-    e.preventDefault()
-    const t = tokenDraft.trim()
-    if (!t) return
-    storeToken(t)
-    setTokenDraft('')
-    setNeedToken(false)
-    toast('Token saved', 'ok')
-  }
 
   // --- add flow: pick -> confirm (auto name + kind chip) -> publish ---
   const setFolderInput = (el) => {
@@ -421,7 +371,6 @@ export default function HostPanel() {
       await load(true)
       loadHealth()
     } catch (err) {
-      if (err && err.status === 401 && mountedRef.current) setNeedToken(true)
       toast(err.message || 'Could not publish the site', 'err')
     } finally {
       if (mountedRef.current) setProgress('')
@@ -478,7 +427,6 @@ export default function HostPanel() {
       setNameDraft('')
       await load(false)
     } catch (err) {
-      if (err && err.status === 401 && mountedRef.current) setNeedToken(true)
       toast(err.message || 'Could not deploy the app', 'err')
     } finally {
       if (mountedRef.current) setProgress('')
@@ -568,7 +516,6 @@ export default function HostPanel() {
         await load(false)
       }
     } catch (err) {
-      if (err && err.status === 401 && mountedRef.current) setNeedToken(true)
       toast(err.message || 'Could not update', 'err')
     } finally {
       if (mountedRef.current) {
@@ -606,7 +553,6 @@ export default function HostPanel() {
       }
       await load(true)
     } catch (err) {
-      if (err && err.status === 401 && mountedRef.current) setNeedToken(true)
       toast(err.message || 'Could not delete the site', 'err')
     } finally {
       if (mountedRef.current) setBusyName(null)
@@ -655,7 +601,6 @@ export default function HostPanel() {
       }
       await load(false)
     } catch (err) {
-      if (err && err.status === 401 && mountedRef.current) setNeedToken(true)
       toast(err.message || 'Could not delete the app', 'err')
     } finally {
       if (mountedRef.current) setBusyName(null)
@@ -698,25 +643,6 @@ export default function HostPanel() {
           <div className="hs-subtitle muted">Put a project online, from this phone.</div>
         </div>
       </div>
-
-      {needToken && (
-        <form className="banner" onSubmit={saveToken}>
-          <Icon name="lock" size={15} />
-          <span className="hs-token-label">Vault is locked — enter your access token to make changes.</span>
-          <input
-            className="hs-token-input"
-            type="password"
-            value={tokenDraft}
-            onChange={(e) => setTokenDraft(e.target.value)}
-            placeholder="access token"
-            aria-label="Access token"
-            autoFocus
-          />
-          <button type="submit" className="btn btn-primary hs-token-btn" disabled={!tokenDraft.trim()}>
-            Save
-          </button>
-        </form>
-      )}
 
       {live && (
         <section className="hs-live glass" aria-label="Publish result">

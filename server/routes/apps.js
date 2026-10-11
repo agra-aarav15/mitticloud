@@ -1,6 +1,5 @@
 // Live apps API — mounted by initApps(app) BEFORE the global 1 MB json parser
-// (app file uploads are multi-MB). All mutations sit under the lock guard
-// (index.js mounts lockWrites on /api/apps first).
+// (app file uploads are multi-MB).
 //
 //   GET    /api/apps                          list apps (live state + disk + ram)
 //   POST   /api/apps            { name }      create an empty app

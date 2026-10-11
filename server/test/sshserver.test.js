@@ -143,9 +143,9 @@ test('GET /api/remote/ssh reports the real listening state and never the token',
   assert.equal(JSON.stringify(json).includes('correct-horse-battery'), false, 'token never returned');
 });
 
-test('a write without the lock token is refused, and the server keeps running', async () => {
-  const { status } = await apiCall('POST', '/api/remote/ssh/disable', {}, { token: '' });
-  assert.equal(status, 401);
+test('SSH refuses a wrong password, and the server keeps running', async () => {
+  const r = await connect({ password: 'wrong-password' });
+  assert.equal(r.ok, false);
   assert.equal(sshState().running, true);
 });
 

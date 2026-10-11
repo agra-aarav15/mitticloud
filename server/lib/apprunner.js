@@ -200,7 +200,7 @@ function scanFreePort() {
 
 // --- env ---
 
-// The parent's own secrets (lock token, agent keys, anything secret-shaped)
+// The parent's own secrets (SSH password, agent keys, anything secret-shaped)
 // never reach an app process. Env vars the OWNER set for this app are added
 // deliberately on top — that is the feature.
 const SECRET_RE = /TOKEN|KEY|SECRET|PASSWORD|MITTI_FAKE/i;

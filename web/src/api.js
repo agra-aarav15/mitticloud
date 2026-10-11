@@ -1,7 +1,7 @@
 // Shared API client + helpers. Panels import from here — do not duplicate.
 
-// The lock token (set via Status → Security or the Host panel) rides on every
-// write so the owner never gets locked out of his own server. Reads stay open.
+// The SSH password (set in Status → SSH password) is sent on writes when one is
+// present. The web app itself needs no token; only the SSH server uses it.
 const TOKEN_KEY = 'mitti_token'
 export function tokenHeaders(extra = {}) {
   let t = ''

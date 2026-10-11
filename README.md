@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/agra-aarav15/mitticloud/main/script
 
 It installs Node 20, creates a `mitti` user, clones MittiCloud into `/opt/mitticloud`, and runs it as a systemd service that restarts on failure. Open `http://<your-server-ip>:7333`. Re-running the line is safe.
 
-Set a lock token before you expose the port: add `Environment=MITTI_TOKEN=<your token>` to `/etc/systemd/system/mitticloud.service`, then `sudo systemctl daemon-reload && sudo systemctl restart mitticloud`.
+The web app and its APIs are open on your network — they need no token. The one secret is the SSH password (see the SSH note below).
 
 ### 3 · Termux on an old phone
 
@@ -59,7 +59,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 ## What you get in v0.17.10
 
 - **Live Node apps finally run on the phone.** Hosted apps used to crash the moment they started: the runner spawned the embedded runtime (`libnode.so`), and Android refuses to execute a file in app storage (the child died with SIGABRT). The APK now ships a small launcher (`libmittinode.so`) in its native library folder — the one place Android lets an app execute from — and the runner uses it. Verified on the OnePlus 6T: a hosted Node server started and answered HTTP.
-- **SSH door for plain SSH clients.** The Remote tab shows the Host, Port, Username and Password (your lock token). One tap turns the door on, and it works from any SSH client on the same Wi-Fi.
+- **SSH door for plain SSH clients.** The Remote tab shows the Host, Port, Username and Password (your SSH password). One tap turns the door on, and it works from any SSH client on the same Wi-Fi.
 - **ZCode and Cursor need a VPS.** Both deploy a Linux server onto the machine they connect to. Run the VPS installer on a Linux machine instead.
 - **The APK starts reliably.** Older Android versions (7 to 9) no longer crash the 24/7 service, and the dashboard waits for the server and says what it is doing instead of showing a blank page.
 - **One Add-a-project flow.** Choose a folder or a ZIP. MittiCloud decides whether it is a website or a live app. The status words show what it is doing: Waiting, Installing, Building, Starting, Live, or Failed at install / build / start.
@@ -71,7 +71,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 ## Honest limits
 
 - **The APK embeds Node 18** (the prebuilt `nodejs-mobile` runtime). MittiCloud declares Node 20 in `package.json`; its server code was checked for Node 20-only APIs and none were found, but the APK is tested on Node 18 only.
-- **The SSH shell runs as the app's own user, not root.** It is locked behind your lock token and off by default. It can only see the vault folder for file access, but a shell can run any program the app's user can run, so keep the lock token secret.
+- **The SSH shell runs as the app's own user, not root.** It is locked behind your SSH password and off by default. It can only see the vault folder for file access, but a shell can run any program the app's user can run, so keep the SSH password secret.
 - **The APK is phone-verified.** The release build is installed and run on a real OnePlus 6T (Android 11): the server boots, the dashboard loads, the battery reads live, and a hosted Node app runs. Report anything that still misbehaves on your device.
 - **Hosted apps run through a bundled launcher.** Android (API 29+) refuses to execute a file an app can write, so the runner cannot start a script from app storage. The APK ships `libmittinode.so` — a real executable, packaged as a native library so Android extracts it into the executable folder — which loads `libnode.so` and calls `node::Start`. Node runs as the app's own user, with no extra privileges.
 - **Cloudflare Pages hosts static files only.** A running server needs the tunnel for a public link.

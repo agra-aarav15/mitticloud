@@ -11,12 +11,12 @@ export const GUIDE_ARTICLES = [
       'On the VPS, run the MittiCloud VPS installer. It starts MittiCloud as a background service.',
       'In the Remote tab, tap "Turn SSH on". The card shows the Host address, Port and Username.',
       'On the laptop, open ZCode or Cursor and choose Remote connection, then SSH.',
-      'Fill the four fields with what the Remote tab shows: Host, Port, Username, and Password (your MittiCloud lock token).',
+      'Fill the four fields with what the Remote tab shows: Host, Port, Username, and Password (your MittiCloud SSH password).',
       'Tap Connect. Wait until it says Connected, then choose the folder to work in.'
     ],
     ifItFails: [
       'Press "Check" in the Remote tab. It says whether SSH is listening.',
-      'The Password is your MittiCloud lock token, not your Wi-Fi password.',
+      'The Password is your MittiCloud SSH password, not your Wi-Fi password.',
       'On a phone, the port is 8022 (never 22). On a VPS, the system SSH on port 22 works too.',
       'If ZCode says "Permission denied" for a server file, the machine cannot run that server. Use a VPS, not an Android phone.'
     ]
