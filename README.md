@@ -13,7 +13,7 @@ No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.11-orange)
+![Release](https://img.shields.io/badge/release-v0.17.12-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,8 +56,9 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.17.11
+## What you get in v0.17.12
 
+- **The checklist knows where it is running.** MittiCloud reports whether it is the Android app or a Termux install, so the "Living checklist" no longer shows Termux and install steps as forever-pending on the APK — they pass by themselves, and the hints talk about the app instead of hand-installing Termux.
 - **No more lock token.** The web app and its APIs are open on your network, so Upload, Add project, Photos and Files just work — no "enter your access token" banner. The one secret is the SSH password (Status → SSH password, or `MITTI_TOKEN` on a VPS), which is the only thing the SSH door uses.
 - **Live Node apps finally run on the phone.** Hosted apps used to crash the moment they started: the runner spawned the embedded runtime (`libnode.so`), and Android refuses to execute a file in app storage (the child died with SIGABRT). The APK now ships a small launcher (`libmittinode.so`) in its native library folder — the one place Android lets an app execute from — and the runner uses it. Verified on the OnePlus 6T: a hosted Node server started and answered HTTP.
 - **SSH door for plain SSH clients.** The Remote tab shows the Host, Port, Username and Password (your SSH password). One tap turns the door on, and it works from any SSH client on the same Wi-Fi.
@@ -93,7 +94,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 │   ├─ /api/status  /api/photos  /api/files           │
 │   ├─ /api/sites   MittiHost    (+ /s/<name>)        │
 │   ├─ /api/apps    Live Node apps (ports 7401–7499)  │
-│   ├─ /api/remote  SSH door for ZCode                │
+│   ├─ /api/remote  SSH door for plain SSH clients    │
 │   ├─ /mcp         AI apps with client keys          │
 │   └─ vault/  photos · files · sites · apps          │
 │                                                     │

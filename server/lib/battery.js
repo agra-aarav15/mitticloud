@@ -11,7 +11,8 @@ import { DATA_DIR } from './paths.js';
 // The Android app writes the phone's real battery here every 30 seconds.
 const APP_BATTERY_FILE = path.join(DATA_DIR, 'battery.json');
 
-function readAppBattery() {
+// Exported for the unit test; the app writes this file every 30 seconds.
+export function readAppBattery() {
   try {
     const raw = JSON.parse(fs.readFileSync(APP_BATTERY_FILE, 'utf8'));
     if (typeof raw.present !== 'boolean') return null;

@@ -2,17 +2,21 @@
 // backend (/api/status, /api/tasks). Nothing here is a static install lecture;
 // the panel computes pass/pending per step and shows what is actually left.
 // Keep points short and actionable. No emojis, no fluff.
+//
+// Two runtimes exist: the Android APK (device.embedded — everything is already
+// inside the app, so the "install" steps pass by themselves) and Termux
+// (device.termux — a hand-installed copy). The panel picks the right notes.
 
 export const GUIDE_STEPS = [
   {
     id: 'termux',
-    title: 'Termux detected',
-    desktopNote: 'Desktop demo mode — normal for now. This passes when MittiCloud runs inside Termux on the phone.',
-    passNote: 'Termux is running this pocket cloud.',
+    title: 'Cloud app installed',
+    desktopNote: 'Desktop demo mode — normal for now. This passes on the phone, either from the APK or inside Termux.',
+    passNote: 'MittiCloud is running on the phone.',
     pending: [
-      'Install F-Droid on the phone from f-droid.org.',
-      'From F-Droid only, install Termux — the Play Store version is outdated and broken.',
-      'Open Termux once; it becomes the runtime for everything below.'
+      'Install the MittiCloud APK on the phone (grab it from the releases page), or',
+      'Install F-Droid, then Termux from F-Droid only — the Play Store Termux is outdated.',
+      'Open it once; that becomes the runtime for everything below.'
     ]
   },
   {
@@ -21,7 +25,7 @@ export const GUIDE_STEPS = [
     passNote: 'Real battery reporting is active — light mode kicks in under 30% on battery.',
     pending: [
       'Battery reads are mocked because this is not running on the phone yet.',
-      'On the phone: install the Termux:API app from F-Droid, then in Termux run: pkg install termux-api',
+      'In the APK this turns on by itself. In Termux, install the Termux:API app from F-Droid, then run: pkg install termux-api',
       'MittiCloud then reads the real battery and defers jobs below 30% until charging.'
     ]
   },
@@ -76,12 +80,12 @@ export const GUIDE_STEPS = [
   },
   {
     id: 'phone-app',
-    title: 'Install on the phone',
-    passNote: 'Running on the phone — nothing to install.',
+    title: 'Reachable from your other devices',
+    passNote: 'The cloud is answering on your network — open a URL above from any device.',
     pending: [
-      'Install F-Droid on the phone, then Termux, Termux:Boot and Termux:API — all from F-Droid only.',
-      'In Termux: git clone https://github.com/agra-aarav15/mitticloud.git mitticloud && cd mitticloud',
-      'Run bash scripts/install.sh, then npm start — the cloud lives at http://localhost:7333 on the phone.'
+      'Open the cloud from the phone itself at http://localhost:7333.',
+      'From a laptop or another phone on the same Wi-Fi, use one of the network URLs shown above.',
+      'For access from anywhere, turn on Tailscale or a Cloudflare Tunnel.'
     ]
   }
 ]

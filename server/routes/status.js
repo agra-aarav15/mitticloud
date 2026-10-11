@@ -107,7 +107,12 @@ router.get('/', async (req, res, next) => {
       storage,
       uptimeSec: Math.floor(process.uptime()),
       version: PKG.version,
-      device: { termux, platform: process.platform, lanUrls: lanUrls() },
+      device: {
+        termux,
+        embedded: process.env.MITTICLOUD_EMBEDDED === '1',
+        platform: process.platform,
+        lanUrls: lanUrls(),
+      },
       security: { locked: isLocked() },
       tailscale,
       tunnel: { mode, hint: tunnelHint(mode) },

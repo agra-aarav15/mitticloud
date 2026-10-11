@@ -9,28 +9,30 @@ const POLL_MS = 30000
 
 /**
  * Pass/pending per step, computed from REAL backend state:
- * - termux:    device.termux === true
+ * - termux:    on the phone — the APK (device.embedded) or inside Termux
  * - battery:   battery.mocked === false (real battery reporting on the device)
  * - lan:       always (the server is answering if you can read this)
  * - tailscale: tunnel.mode === 'tailscale'
  * - first-task: /api/tasks returns at least one task
  * - first-site: /api/sites returns at least one hosted site
  * - bridge:    /api/bridge/sessions returns at least one Cloud Mode session
- * - phone-app: MittiCloud is running inside Termux (device.termux)
+ * - phone-app: on the phone (same as termux) — the reach step passes once the
+ *              server is up, which it is if this panel loaded
  */
 function computePass(status, tasks, sites, sessions) {
   const device = (status && status.device) || {}
   const battery = (status && status.battery) || {}
   const tunnel = (status && status.tunnel) || {}
+  const onPhone = device.embedded === true || device.termux === true
   return {
-    termux: device.termux === true,
+    termux: onPhone,
     battery: battery.mocked === false,
     lan: true,
     tailscale: tunnel.mode === 'tailscale',
     'first-task': Array.isArray(tasks) && tasks.length >= 1,
     'first-site': Array.isArray(sites) && sites.length >= 1,
     bridge: Array.isArray(sessions) && sessions.length >= 1,
-    'phone-app': device.termux === true
+    'phone-app': onPhone
   }
 }
 
@@ -191,7 +193,7 @@ export default function GuidesPanel({ onGoTo }) {
               >
                 <span className={'gd-dot' + (isPass ? ' is-pass' : '')} aria-hidden="true" />
                 <span className="gd-name">{s.title}</span>
-                {s.id === 'termux' && !isPass && <span className="chip chip-warn">desktop demo</span>}
+                {s.id === 'termux' && !isPass && <span className="chip chip-warn">not on the phone</span>}
                 <span className={'gd-state' + (isPass ? ' is-pass' : '')}>
                   {isPass ? 'ready' : 'pending'}
                 </span>

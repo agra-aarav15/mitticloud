@@ -465,7 +465,7 @@ export default function StatusPanel() {
 
         <section className="st-card glass" aria-label="Device">
           <CardHead icon="cpu" label="Device" />
-          <div className="st-big">{device.termux ? 'Phone · Termux' : 'This computer'}</div>
+          <div className="st-big">{device.embedded ? 'Phone · App' : device.termux ? 'Phone · Termux' : 'This computer'}</div>
           <div className="st-kvs">
             <div className="st-kv">
               <span className="muted">Uptime</span>
