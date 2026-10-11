@@ -265,10 +265,12 @@ export function redirectNodeInvocation(command) {
   if (!isEmbeddedAndroid()) return command;
   if (!REMOTE_SERVER_RE.test(command)) return command;
   const exe = nodeRuntime();
-  // Swap every `node` executable token (bare `node`, or any `.../node` path).
-  // Env assignments and quoting around it are preserved.
-  return command.replace(/(^|[\s"'=])((?:[^\s"'=]*\/)?node)(?=[\s"']|$)/g, (whole, pre, tok) =>
-    tok === 'node' || tok.endsWith('/node') ? `${pre}${exe}` : whole
+  // Swap the node executable token: a bare `node`/`node.exe`, or any path that
+  // ends in one. Separators may be / or \ and the token may be quoted; the
+  // surrounding env assignments and quoting are preserved.
+  return command.replace(
+    /(^|[\s"'=])((?:[^\s"'=]*[/\\])?node(?:\.exe)?)(?=[\s"']|$)/g,
+    (whole, pre, tok) => (/^(?:[^\s"'=]*[/\\])?node(?:\.exe)?$/.test(tok) ? `${pre}${exe}` : whole)
   );
 }
 

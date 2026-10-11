@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'mitticloud-sshshell-'));
 process.env.MITTICLOUD_VAULT_DIR = path.join(TMP_ROOT, 'vault');
@@ -16,6 +17,7 @@ process.env.MITTICLOUD_DATA_DIR = path.join(TMP_ROOT, 'data');
 const { resolveShell, shellPath, redirectNodeInvocation, isEmbeddedAndroid } = await import(
   '../lib/sshserver.js'
 );
+const { nodeRuntime } = await import('../lib/apprunner.js');
 
 after(() => {
   delete process.env.MITTICLOUD_EMBEDDED;
@@ -136,6 +138,60 @@ test('Cursor\'s server tree is recognised the same way as ZCode\'s', () => {
 
   const code = redirectNodeInvocation('/home/mitti/.vscode-server/node /home/mitti/.vscode-server/code-server.js');
   assert.ok(code.includes(launcher), code);
+
+  delete process.env.MITTICLOUD_NATIVE_DIR;
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the rewritten command actually runs and starts the server on THIS node', () => {
+  // The real proof: take a ZCode-style launch line, point the "uploaded node" at
+  // a script that reports its own version, rewrite it, and execute the result.
+  // If the redirect is right, the script runs — on any host, any platform.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zcode-e2e-'));
+  const server = path.join(dir, 'zcode-server.cjs');
+  fs.writeFileSync(
+    server,
+    "process.stdout.write('server-started ' + process.version + ' pid=' + process.pid)\n"
+  );
+  // An "uploaded node" that does not exist: if the redirect failed to swap it,
+  // running the command would fail with ENOENT and the test would fail loudly.
+  const fakeUploadedNode = path.join(dir, process.platform === 'win32' ? 'node.exe' : 'node');
+
+  process.env.MITTICLOUD_EMBEDDED = '1';
+  process.env.MITTICLOUD_NATIVE_DIR = path.join(dir, 'native'); // no launcher → nodeRuntime() = process.execPath
+  fs.mkdirSync(process.env.MITTICLOUD_NATIVE_DIR, { recursive: true });
+
+  const quoted = (s) => `"${s}"`;
+  const cmd = `${quoted(fakeUploadedNode)} ${quoted(server)}`;
+  const rewritten = redirectNodeInvocation(cmd);
+  assert.ok(!rewritten.includes(fakeUploadedNode), 'uploaded node swapped: ' + rewritten);
+
+  // Run the server script with the node the rewrite chose. Reading it back out
+  // of the string would trip over spaces in a Windows path, so resolve it the
+  // same way the server does and assert it is a real, runnable node.
+  const chosen = nodeRuntime();
+  const out = execFileSync(chosen, [server], { encoding: 'utf8', timeout: 20000 });
+  assert.match(out, /^server-started v\d+\.\d+\.\d+ pid=\d+/, out);
+  assert.ok(!/libmittinode/.test(chosen), 'fallback runtime is a working node here');
+
+  delete process.env.MITTICLOUD_NATIVE_DIR;
+  delete process.env.MITTICLOUD_EMBEDDED;
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('env assignments around the launch survive the rewrite', () => {
+  process.env.MITTICLOUD_EMBEDDED = '1';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mittinode-'));
+  const launcher = path.join(dir, 'libmittinode.so');
+  fs.writeFileSync(launcher, 'x');
+  process.env.MITTICLOUD_NATIVE_DIR = dir;
+
+  const cmd =
+    'ZCODE_REMOTE_MODE="desktop-attached-remote" ZCODE_APP_VERSION=\'3.14.5\' /home/mitti/.zcode/server/node /home/mitti/.zcode/server/zcode-server.cjs';
+  const out = redirectNodeInvocation(cmd);
+  assert.ok(out.includes('ZCODE_REMOTE_MODE="desktop-attached-remote"'), out);
+  assert.ok(out.includes("ZCODE_APP_VERSION='3.14.5'"), out);
+  assert.ok(out.includes(launcher), out);
 
   delete process.env.MITTICLOUD_NATIVE_DIR;
   fs.rmSync(dir, { recursive: true, force: true });
