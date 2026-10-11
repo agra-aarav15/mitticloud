@@ -250,6 +250,7 @@ export function startSsh({ host = '127.0.0.1', port = sshPort() } = {}) {
   server.on('error', (err) => {
     state = { listening: false, port, host, error: err.message };
   });
+  state = { listening: false, port, host, error: null };
   server.listen(port, host, () => {
     state = { listening: true, port, host, error: null };
   });
