@@ -4,7 +4,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync } from 'node:fs';
 
-import { getBattery, getStorage, isTermux } from '../lib/termux.js';
+import { readBattery } from '../lib/battery.js';
+import { getStorage, isTermux } from '../lib/termux.js';
 import { getLanIPs } from '../lib/net.js';
 import { isLocked } from '../lib/auth.js';
 import { VAULT_DIR } from '../lib/paths.js';
@@ -96,7 +97,7 @@ router.get('/', async (req, res, next) => {
   try {
     const [termux, battery, storage, mode, tailscale] = await Promise.all([
       isTermux(),
-      getBattery(),
+      readBattery(),
       getStorage(VAULT_DIR),
       detectTunnel(),
       tailscaleInfo(),
