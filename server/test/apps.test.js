@@ -29,6 +29,7 @@ const {
   detectEntry,
   buildEnv,
   npmInstallAvailable,
+  nodeRuntime,
   readRegistry,
   stopAllApps,
 } = await import('../lib/apprunner.js');
@@ -186,6 +187,33 @@ test('buildEnv: parent secrets scrubbed, PORT always set, app env added, junk ke
 
 test('npmInstallAvailable answers a boolean (no registry contact)', async () => {
   assert.equal(typeof (await npmInstallAvailable()), 'boolean');
+});
+
+// On the phone the runtime is libnode.so, which Android will not execve() — a
+// child started that way dies with SIGABRT (verified on the device). The APK
+// ships libmittinode.so in its native library folder and points
+// MITTICLOUD_NATIVE_DIR there; nodeRuntime() must prefer that launcher and fall
+// back to process.execPath everywhere else.
+test('nodeRuntime: uses the APK launcher when present, else process.execPath', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mittinode-'));
+  const launcher = path.join(dir, 'libmittinode.so');
+  try {
+    delete process.env.MITTICLOUD_NATIVE_DIR;
+    assert.equal(nodeRuntime(), process.execPath, 'no env: the desktop runtime');
+
+    process.env.MITTICLOUD_NATIVE_DIR = dir;
+    assert.equal(nodeRuntime(), process.execPath, 'missing launcher: falls back');
+
+    fs.writeFileSync(launcher, 'x');
+    assert.equal(nodeRuntime(), launcher, 'present launcher: the phone runtime');
+
+    fs.rmSync(launcher);
+    process.env.MITTICLOUD_NATIVE_DIR = path.join(dir, 'nope');
+    assert.equal(nodeRuntime(), process.execPath, 'bad dir: falls back');
+  } finally {
+    delete process.env.MITTICLOUD_NATIVE_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // --- 4. create + list + duplicate ---

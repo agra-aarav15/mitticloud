@@ -54,6 +54,27 @@ jobs:
             cp "$src" "android/app/src/main/jniLibs/$abi/"
           done
 
+      - name: Build the runnable Node launcher (libmittinode.so)
+        run: |
+          # Android refuses to exec anything an app can write, so a hosted app
+          # cannot be started from app storage. The APK's native library folder
+          # IS executable, so this real PIE executable is shipped there under a
+          # .so name. It loads its sibling libnode.so and calls node::Start.
+          NDK="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
+          # The host tag (linux-x86_64) varies, so locate the toolchain by probing.
+          BIN=$(find "$NDK/toolchains/llvm/prebuilt" -type f -name "aarch64-linux-android24-clang" | head -1)
+          test -n "$BIN" || { echo "NDK clang not found"; exit 1; }
+          TOOLCHAIN=$(dirname "$BIN")
+          for pair in arm64-v8a:aarch64-linux-android24 armeabi-v7a:armv7a-linux-androideabi24 x86_64:x86_64-linux-android24; do
+            abi="${pair%%:*}"; trip="${pair##*:}"
+            CC="$TOOLCHAIN/${trip}-clang"
+            test -x "$CC" || { echo "compiler not found: $CC"; exit 1; }
+            "$CC" -O2 -fPIE -pie -Wall -Wextra \
+              -o "android/app/src/main/jniLibs/$abi/libmittinode.so" \
+              android/app/src/main/cpp/mittinode.c
+          done
+          ls -la android/app/src/main/jniLibs/*/libmittinode.so
+
       - name: Stage the server into the APK assets
         run: |
           mkdir -p android/app/src/main/assets/mitti
@@ -86,6 +107,7 @@ jobs:
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "MittiCloud-v${VERSION}.apk"
           for abi in arm64-v8a armeabi-v7a x86_64; do
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libc++_shared.so" || { echo "APK is missing libc++_shared.so for $abi"; exit 1; }
+            unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittinode.so" || { echo "APK is missing libmittinode.so for $abi"; exit 1; }
           done
           echo "APK_NAME=MittiCloud-v${VERSION}.apk" >> "$GITHUB_ENV"
 

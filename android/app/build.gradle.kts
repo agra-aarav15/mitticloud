@@ -5,6 +5,16 @@ plugins {
 val mittiVersion = (rootProject.file("../package.json").readText()
     .let { Regex("[\"]version[\"][ ]*:[ ]*[\"]([^\"]+)[\"]").find(it)?.groupValues?.get(1) } ?: "0.0.0")
 
+// versionCode must rise for every upload, and was frozen at 20 across v0.16-v0.17.9.
+// Derive it from the version so it can never be forgotten again: 0.17.10 -> 17010.
+// Play caps this at 2100000000; major*10000 stays well inside that.
+val mittiVersionCode = mittiVersion.split('.').let { parts ->
+    val major = parts.getOrNull(0)?.toIntOrNull() ?: 0
+    val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+    val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
+    major * 10000 + minor * 100 + patch
+}
+
 android {
     namespace = "in.mitticloud.app"
     compileSdk = 36
@@ -15,7 +25,7 @@ android {
         applicationId = "in.mitticloud.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20
+        versionCode = mittiVersionCode
         versionName = mittiVersion
     }
 

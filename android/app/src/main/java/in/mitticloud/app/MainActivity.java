@@ -2,19 +2,25 @@ package in.mitticloud.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.app.DownloadManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.webkit.URLUtil;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -27,8 +33,10 @@ import java.io.OutputStream;
  */
 public class MainActivity extends Activity {
     private static final String URL = "http://localhost:7333/";
-    private static final String VERSION = "0.17.9";
+    private static final String VERSION = "0.17.10";
+    private static final int FILE_REQUEST = 4101;
     private WebView web;
+    private ValueCallback<Uri[]> fileCallback;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -64,12 +72,48 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                                             FileChooserParams params) {
+                if (fileCallback != null) fileCallback.onReceiveValue(null);
+                fileCallback = callback;
+                Intent pick = params.createIntent();
+                pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+                try {
+                    startActivityForResult(pick, FILE_REQUEST);
+                } catch (Exception e) {
+                    fileCallback = null;
+                    return false;
+                }
+                return true;
+            }
+        });
+        web.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+            req.setMimeType(mimeType);
+            req.addRequestHeader("User-Agent", userAgent);
+            req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,
+                    URLUtil.guessFileName(url, contentDisposition, mimeType));
+            ((DownloadManager) getSystemService(DOWNLOAD_SERVICE)).enqueue(req);
+            Toast.makeText(this, "Downloading to Downloads", Toast.LENGTH_SHORT).show();
+        });
         root.addView(web, new LinearLayout.LayoutParams(-1, -1));
         setContentView(root);
 
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, 1);
         }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != FILE_REQUEST || fileCallback == null) return;
+        Uri[] picked = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+        fileCallback.onReceiveValue(picked);
+        fileCallback = null;
     }
 
     private void startCloud() {

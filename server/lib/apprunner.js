@@ -22,6 +22,29 @@ import { fileURLToPath } from 'node:url';
 
 const STATIC_SERVER = fileURLToPath(new URL('./staticServe.js', import.meta.url));
 
+/**
+ * The Node program to spawn for a hosted app.
+ *
+ * On a desktop this is process.execPath — a real executable. On the phone it is
+ * NOT: the runtime is libnode.so, a shared library Android refuses to execve()
+ * (a child started that way dies with SIGABRT). The APK therefore also ships
+ * libmittinode.so, a real executable that loads its sibling libnode.so, and the
+ * app passes its native library folder in MITTICLOUD_NATIVE_DIR. That folder is
+ * the one place Android lets an app execute from.
+ */
+export function nodeRuntime() {
+  const dir = process.env.MITTICLOUD_NATIVE_DIR;
+  if (dir) {
+    const native = path.join(dir, 'libmittinode.so');
+    try {
+      if (fs.statSync(native).isFile()) return native;
+    } catch {
+      /* fall through to the desktop runtime */
+    }
+  }
+  return process.execPath;
+}
+
 export const APPS_DIR = path.join(FILES_DIR, 'apps');
 export const REGISTRY_FILE = path.join(DATA_DIR, 'apps.json');
 const PORT_MIN = 7401;
@@ -322,14 +345,14 @@ export async function startApp(name, { force = false } = {}) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } else if (profile.startKind === 'static') {
-    child = spawn(process.execPath, [STATIC_SERVER, path.join(dirAbs, profile.outputDir)], {
+    child = spawn(nodeRuntime(), [STATIC_SERVER, path.join(dirAbs, profile.outputDir)], {
       cwd: dirAbs,
       env: childEnv,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } else {
-    child = spawn(process.execPath, [entry], {
+    child = spawn(nodeRuntime(), [entry], {
       cwd: dirAbs,
       env: childEnv,
       windowsHide: true,

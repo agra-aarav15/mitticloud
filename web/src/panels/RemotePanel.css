@@ -377,6 +377,40 @@
   flex-direction: column;
   gap: 12px;
 }
+.rp-step-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.rp-step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.rp-step-no {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+}
+.rp-step-block .rp-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rp-step-block > .rp-note {
+  margin: 0;
+}
 .rp-story {
   margin: 0;
   font-size: 13.5px;
