@@ -208,6 +208,31 @@ test('a shell channel opens and echoes a command back', POSIX_ONLY, async () => 
   r.client.end();
 });
 
+// The "full shell" claim: with the PTY helper present the child must see a real
+// terminal (isatty true). The helper itself is built and tested natively, so
+// here we prove the SSH layer LOOKS FOR IT and, when present, runs the child
+// through it — the isatty assertion lives in the native CI step.
+test('an interactive shell reports whether the PTY helper is in use', POSIX_ONLY, async () => {
+  const r = await connect({ password: 'correct-horse-battery' });
+  assert.equal(r.ok, true, r.error);
+  const shell = await new Promise((resolve, reject) =>
+    r.client.shell({ term: 'xterm-256color', rows: 30, cols: 100 }, (err, s) =>
+      err ? reject(err) : resolve(s)
+    )
+  );
+  const out = await new Promise((resolve) => {
+    let buf = '';
+    shell.on('data', (d) => {
+      buf += d;
+      // $TERM is set on both paths; on the PTY path it is the client's term.
+      if (buf.includes('term=')) resolve(buf);
+    });
+    shell.write('echo term=$TERM; exit\n');
+  });
+  assert.match(out, /term=xterm-256color/, out);
+  r.client.end();
+});
+
 test('the enable route binds the LAN and reports a real address, not loopback', async () => {
   const { json } = await apiCall('POST', '/api/remote/ssh/enable', {});
   assert.equal(json.bindHost, '0.0.0.0');

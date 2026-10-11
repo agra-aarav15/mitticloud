@@ -14,9 +14,8 @@ const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'mitticloud-sshshell-'));
 process.env.MITTICLOUD_VAULT_DIR = path.join(TMP_ROOT, 'vault');
 process.env.MITTICLOUD_DATA_DIR = path.join(TMP_ROOT, 'data');
 
-const { resolveShell, shellPath, redirectNodeInvocation, isEmbeddedAndroid } = await import(
-  '../lib/sshserver.js'
-);
+const { resolveShell, shellPath, redirectNodeInvocation, isEmbeddedAndroid, ptyHelper } =
+  await import('../lib/sshserver.js');
 const { nodeRuntime } = await import('../lib/apprunner.js');
 
 after(() => {
@@ -203,4 +202,26 @@ test('a normal node script the owner runs is NOT redirected', () => {
   // node scripts keep running under the node they asked for.
   const cmd = 'node index.js';
   assert.equal(redirectNodeInvocation(cmd), cmd);
+});
+// --- the PTY helper lookup (full interactive shell) ---
+
+test('ptyHelper: found only when the app shipped libmittish.so', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mittish-'));
+  try {
+    delete process.env.MITTICLOUD_NATIVE_DIR;
+    assert.equal(ptyHelper(), null, 'no env: nothing to find');
+
+    process.env.MITTICLOUD_NATIVE_DIR = dir;
+    assert.equal(ptyHelper(), null, 'missing helper: null');
+
+    const helper = path.join(dir, 'libmittish.so');
+    fs.writeFileSync(helper, 'x');
+    assert.equal(ptyHelper(), helper, 'present helper: its path');
+
+    process.env.MITTICLOUD_NATIVE_DIR = path.join(dir, 'nope');
+    assert.equal(ptyHelper(), null, 'bad dir: null');
+  } finally {
+    delete process.env.MITTICLOUD_NATIVE_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

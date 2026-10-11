@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.16-orange)
+![Release](https://img.shields.io/badge/release-v0.17.17-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,8 +56,9 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.17.16
+## What you get in v0.17.17
 
+- **A full interactive SSH shell.** The shell channel used plain pipes, so there was no terminal: `isatty()` was false and interactive tools refused to run. The APK now bundles `libmittish.so`, a small PTY proxy (packaged like the Node launcher so Android will execute it), and an interactive session gets a real terminal with working line editing, colours, and window-size changes.
 - **ZCode and Cursor can now connect to the phone.** Their Remote-SSH uploads its own `node` and a JavaScript server, then runs them together. Android cannot execute that uploaded Linux binary, so the session died with "Permission denied". MittiCloud now recognises that exact launch and runs the server with the phone's own Node instead — and finds the real shell and PATH Android needs. Not yet verified end to end on a phone.
 - **The app is the main path, not Termux.** The phone setup guide leads with the APK — install, tap Start, done — and keeps Termux as the advanced option.
 - **The checklist knows where it is running.** MittiCloud reports whether it is the Android app or a Termux install, so the "Living checklist" no longer shows Termux and install steps as forever-pending on the APK — they pass by themselves, and the hints talk about the app instead of hand-installing Termux.
@@ -75,7 +76,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 ## Honest limits
 
 - **The APK embeds Node 18** (the prebuilt `nodejs-mobile` runtime). MittiCloud declares Node 20 in `package.json`; its server code was checked for Node 20-only APIs and none were found, but the APK is tested on Node 18 only.
-- **The SSH shell runs as the app's own user, not root.** It is locked behind your SSH password and off by default. It can only see the vault folder for file access, but a shell can run any program the app's user can run, so keep the SSH password secret.
+- **The SSH shell is a real interactive shell.** The APK bundles a small PTY proxy (`libmittish.so`, built like the Node launcher); an interactive session gets a genuine terminal, so `isatty()` is true, line editing and colours work, and the client's window size is honoured. It is off by default, lives behind your SSH password, starts inside the vault, and runs as the app's own user — not root. A shell can run any program that user can, so keep the SSH password secret.
 - **The APK is phone-verified.** The release build is installed and run on a real OnePlus 6T (Android 11): the server boots, the dashboard loads, the battery reads live, and a hosted Node app runs. Report anything that still misbehaves on your device.
 - **Hosted apps run through a bundled launcher.** Android (API 29+) refuses to execute a file an app can write, so the runner cannot start a script from app storage. The APK ships `libmittinode.so` — a real executable, packaged as a native library so Android extracts it into the executable folder — which loads `libnode.so` and calls `node::Start`. Node runs as the app's own user, with no extra privileges.
 - **Cloudflare Pages hosts static files only.** A running server needs the tunnel for a public link.
@@ -125,7 +126,7 @@ The Android app is built by [`.github/workflows/apk.yml`](.github/workflows/apk.
 - [x] SSH password login (set it in Status → SSH password, or `MITTI_TOKEN`)
 - [x] Phone-verified APK run (install, boot, live battery and a hosted Node app on a OnePlus 6T)
 - [x] Web app with no write-lock — the APIs are open on your network
-- [ ] Full shell over SSH (needs Termux or a VPS; out of scope for the APK)
+- [x] Full interactive shell over SSH (a real PTY via the bundled `libmittish.so`, so isatty() is true and the terminal resizes)
 - [ ] WebDAV — mount the vault as a drive from any file manager
 - [ ] Load balancing across devices
 

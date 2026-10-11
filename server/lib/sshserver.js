@@ -283,31 +283,159 @@ function shellArgs(command) {
   return { cmd: sh, args: command ? ['-c', command] : [] };
 }
 
+// The PTY proxy, when the APK shipped one. A full interactive shell needs a real
+// terminal; MittiCloud's APK builds `libmittish.so` (a PTY proxy) and points
+// MITTICLOUD_NATIVE_DIR at it. Absent on a desktop/VPS, where a PTY is not
+// available — the shell still runs, just without isatty() and job control.
+export function ptyHelper() {
+  const dir = process.env.MITTICLOUD_NATIVE_DIR;
+  if (!dir) return null;
+  const helper = path.join(dir, 'libmittish.so');
+  try {
+    if (fs.statSync(helper).isFile()) return helper;
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
 // Run one shell or exec request as a child process, with its stdio on the channel.
-function runChild(channel, { command = null } = {}) {
-  const sh = shellArgs(redirectNodeInvocation(command));
-  const env = { ...process.env, HOME: VAULT_DIR, TERM: 'dumb', PATH: shellPath() };
+// `pty` is the client's terminal request (term/rows/cols) for an interactive
+// shell. Returns a { resize(rows, cols) } handle so window-change requests can
+// reflow the terminal.
+function runChild(channel, { command = null, pty = null } = {}) {
+  const rewritten = redirectNodeInvocation(command);
+  const baseEnv = { ...process.env, HOME: VAULT_DIR, PATH: shellPath() };
+  const helper = pty ? ptyHelper() : null;
+
+  if (pty && helper) {
+    return runWithPty(channel, { helper, command: rewritten, pty, env: baseEnv });
+  }
+
+  const sh = shellArgs(rewritten);
+  const env = { ...baseEnv, TERM: pty ? pty.term || 'xterm-256color' : 'dumb' };
   if (!sh.cmd) {
     // No usable shell on this machine — say so plainly instead of a bare ENOENT.
     channel.stderr.write('mitticloud: no shell found to run this command\n');
     channel.exit(127);
     channel.end();
-    return;
+    return { resize() {} };
   }
   const child = spawn(sh.cmd, sh.args, { cwd: VAULT_DIR, env, stdio: ['pipe', 'pipe', 'pipe'] });
-  child.stdout.on('data', (d) => channel.write(d));
-  child.stderr.on('data', (d) => channel.stderr.write(d));
-  channel.on('data', (d) => child.stdin.write(d));
+  let alive = true;
+  const toClient = (buf) => {
+    if (alive) channel.write(buf);
+  };
+  const toClientErr = (buf) => {
+    if (alive) channel.stderr.write(buf);
+  };
+  child.stdout.on('data', toClient);
+  child.stderr.on('data', toClientErr);
+  channel.on('data', (d) => {
+    if (alive) child.stdin.write(d);
+  });
   channel.on('end', () => child.stdin.end());
   child.on('error', () => {
+    if (!alive) return;
+    alive = false;
     channel.exit(127);
     channel.end();
   });
   child.on('close', (code) => {
+    if (!alive) return;
+    alive = false;
     channel.exit(code ?? 0);
     channel.end();
   });
-  channel.on('close', () => child.kill());
+  channel.on('close', () => {
+    alive = false;
+    child.kill();
+  });
+  return { resize() {} }; // no terminal to resize on the pipe path
+}
+
+/**
+ * Interactive shell over the PTY proxy. The helper runs the real shell on a PTY
+ * and pipes bytes to us, so isatty() is true, line editing works, and the client
+ * can resize. Resizes go to the helper on fd 3 as "R <rows> <cols>\n".
+ */
+function runWithPty(channel, { helper, command, pty, env }) {
+  const sh = resolveShell();
+  if (!sh) {
+    channel.stderr.write('mitticloud: no shell found to run this command\n');
+    channel.exit(127);
+    channel.end();
+    return { resize() {} };
+  }
+  const rows0 = Number(pty.rows) > 0 ? Number(pty.rows) : 24;
+  const cols0 = Number(pty.cols) > 0 ? Number(pty.cols) : 80;
+  const runEnv = {
+    ...env,
+    TERM: pty.term || 'xterm-256color',
+    MITTI_PTY_ROWS: String(rows0),
+    MITTI_PTY_COLS: String(cols0),
+  };
+
+  // fd 3 is the resize control pipe the helper reads.
+  const child = spawn(helper, [sh, ...(command ? ['-c', command] : [])], {
+    cwd: VAULT_DIR,
+    env: runEnv,
+    stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+  });
+  const ctl = child.stdio[3];
+  let ctlOpen = Boolean(ctl);
+  let alive = true;
+
+  const toClient = (buf) => {
+    if (alive) channel.write(buf);
+  };
+  const toClientErr = (buf) => {
+    if (alive) channel.stderr.write(buf);
+  };
+  child.stdout.on('data', toClient);
+  child.stderr.on('data', toClientErr);
+  child.on('error', () => {
+    if (!alive) return;
+    alive = false;
+    channel.stderr.write('mitticloud: could not start the terminal helper\n');
+    channel.exit(127);
+    channel.end();
+  });
+  channel.on('data', (d) => {
+    if (alive) child.stdin.write(d);
+  });
+  channel.on('end', () => child.stdin.end());
+  channel.on('close', () => {
+    alive = false;
+    child.kill();
+  });
+  child.on('close', (code) => {
+    if (ctlOpen) {
+      ctlOpen = false;
+      try {
+        ctl.end();
+      } catch {
+        /* already gone */
+      }
+    }
+    if (!alive) return;
+    alive = false;
+    channel.exit(code ?? 0);
+    channel.end();
+  });
+
+  return {
+    resize(rows, cols) {
+      if (!ctlOpen || !ctl) return;
+      const r = Number(rows) > 0 ? Math.floor(Number(rows)) : rows0;
+      const c = Number(cols) > 0 ? Math.floor(Number(cols)) : cols0;
+      try {
+        ctl.write(`R ${r} ${c}\n`);
+      } catch {
+        ctlOpen = false;
+      }
+    },
+  };
 }
 
 /** Start the SSH server. Idempotent. Returns the current state. */
@@ -327,8 +455,23 @@ export function startSsh({ host = '127.0.0.1', port = sshPort() } = {}) {
         session.on('exec', (acceptExec, _reject, info) => {
           runChild(acceptExec(), { command: info.command });
         });
+        // An interactive shell: remember the client's terminal request so the
+        // PTY helper starts at the right size, and reflow on window-change.
+        let pty = null;
+        let shellRunner = null;
+        session.on('pty', (acceptPty, _reject, info) => {
+          pty = info || {};
+          if (acceptPty) acceptPty();
+        });
+        session.on('window-change', (_accept, _reject, info) => {
+          if (pty && info) {
+            pty.rows = info.rows;
+            pty.cols = info.cols;
+          }
+          if (shellRunner) shellRunner.resize(info?.rows, info?.cols);
+        });
         session.on('shell', (acceptShell) => {
-          runChild(acceptShell());
+          shellRunner = runChild(acceptShell(), { pty });
         });
       });
     });
