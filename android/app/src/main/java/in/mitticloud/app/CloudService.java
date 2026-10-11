@@ -98,6 +98,7 @@ public class CloudService extends Service {
             root.getAbsolutePath(),
             data.getAbsolutePath(),
             vault.getAbsolutePath(),
+            getApplicationInfo().nativeLibraryDir,
             7333
         );
     }

@@ -13,9 +13,9 @@ final class NodeBridge {
 
     private NodeBridge() {}
 
-    static native void startNative(String entry, String root, String dataDir, String vaultDir, int port);
+    static native void startNative(String entry, String root, String dataDir, String vaultDir, String nativeDir, int port);
 
-    static void start(String entry, String root, String dataDir, String vaultDir, int port) {
-        new Thread(() -> startNative(entry, root, dataDir, vaultDir, port), "node-main").start();
+    static void start(String entry, String root, String dataDir, String vaultDir, String nativeDir, int port) {
+        new Thread(() -> startNative(entry, root, dataDir, vaultDir, nativeDir, port), "node-main").start();
     }
 }
