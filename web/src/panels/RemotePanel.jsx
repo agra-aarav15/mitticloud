@@ -513,8 +513,8 @@ function SshCard() {
       </div>
       <p className="muted rp-note">
         {ssh.enabled
-          ? 'Plain SSH clients can connect now on the same Wi-Fi. ZCode and Cursor need a VPS; see the ZCode guide.'
-          : 'Turn SSH on to let plain SSH clients connect. ZCode and Cursor need a VPS.'}
+          ? 'SSH is on. Plain SSH and SFTP clients connect now on the same Wi-Fi, and ZCode or Cursor can deploy their server here — MittiCloud runs it with the phone\'s Node.'
+          : 'Turn SSH on to let SSH clients connect — plain clients, and ZCode or Cursor.'}
       </p>
       <div className="rp-reach-meta">
         {fields.map((f) => (
@@ -538,7 +538,8 @@ function SshCard() {
         </button>
       </div>
       <p className="muted rp-note">
-        The phone gives file access and plain SSH commands. ZCode and Cursor need a VPS.
+        File access (SFTP) and shell commands both work. ZCode and Cursor deploy their server
+        over this door and run on the phone's Node.
       </p>
     </div>
   )
@@ -578,14 +579,17 @@ export default function RemotePanel({ onGoTo }) {
       <section className="rp-step-block">
         <div className="rp-step-head">
           <span className="rp-step-no">3</span>
-          <span className="rp-name">Use ZCode or Cursor from a VPS</span>
+          <span className="rp-name">Connect a coding agent (SSH)</span>
         </div>
         <p className="muted rp-note">
-          ZCode and Cursor need a VPS for SSH. Use the VPS installer, then follow the guide.
+          Plain SSH clients and SFTP connect to this cloud on the same Wi-Fi. ZCode and Cursor
+          work too: they upload their own server, and MittiCloud runs it with the phone's own
+          Node (their own Linux build cannot run on Android). Turn SSH on, then connect from the
+          laptop.
         </p>
         <SshCard />
         <button className="btn btn-primary" onClick={() => onGoTo && onGoTo('guides')}>
-          Open the full ZCode guide
+          Open the SSH guide
         </button>
       </section>
     </div>
