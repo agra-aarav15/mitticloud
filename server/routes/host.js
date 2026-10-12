@@ -86,8 +86,10 @@ function tunnelStatus() {
 }
 
 function startCloudflared(bin, args, mode) {
-  // the bin string becomes a process name — refuse anything process-like
-  if (!/^[a-z0-9_\-.:\\\/() ]+$/i.test(bin)) {
+  // The bin string becomes a process name — refuse anything process-like.
+  // The bundled path is built from the APK's own native-library dir (Android
+  // puts "~" and "=" in those paths), so it skips the user-input whitelist.
+  if (bin !== bundledTunnelBin() && !/^[a-z0-9_\-.:\\\/() ]+$/i.test(bin)) {
     throw Object.assign(new Error('cloudflared path looks wrong — use a plain path or "cloudflared"'), { status: 400 });
   }
   let child;
