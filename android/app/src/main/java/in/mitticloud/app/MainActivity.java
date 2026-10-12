@@ -33,7 +33,7 @@ import java.io.OutputStream;
  */
 public class MainActivity extends Activity {
     private static final String URL = "http://localhost:7333/";
-    private static final String VERSION = "0.17.18";
+    private static final String VERSION = "0.17.19";
     private static final int FILE_REQUEST = 4101;
     private WebView web;
     private ValueCallback<Uri[]> fileCallback;

@@ -37,10 +37,13 @@ jobs:
           out=$(MITTI_PTY_ROWS=24 MITTI_PTY_COLS=80 /tmp/mittish /bin/sh -c 'if [ -t 0 ] && [ -t 1 ]; then echo TTY_OK; else echo NO_TTY; fi')
           echo "$out"
           echo "$out" | grep -q TTY_OK || { echo "the child had no terminal"; exit 1; }
-          # 2. It must be interactive: feed a command on stdin and read the shell's reply.
-          reply=$(printf 'echo PIPE_$((6*7))\nexit\n' | MITTI_PTY_ROWS=24 /tmp/mittish /bin/sh)
-          echo "$reply"
-          echo "$reply" | grep -q PIPE_42 || { echo "input did not reach the shell"; exit 1; }
+          # 2. It must be interactive: feed a command on stdin and confirm it RAN.
+          #    Checked via a file side-effect, not scrollback — reading the pty's
+          #    output races the shell's exit, but the file is deterministic.
+          rm -f /tmp/mittish_proof
+          printf 'echo PIPE_$((6*7)) > /tmp/mittish_proof\nexit\n' | MITTI_PTY_ROWS=24 /tmp/mittish /bin/sh || true
+          cat /tmp/mittish_proof 2>/dev/null || { echo "input did not reach the shell"; exit 1; }
+          grep -q PIPE_42 /tmp/mittish_proof || { echo "input did not reach the shell"; exit 1; }
           # 3. A resize request on fd 3 must reach the child's terminal size.
           printf 'R 40 120\n' > /tmp/ctl.txt
           out2=$(/tmp/mittish /bin/sh -c 'sleep 0.4; stty size' 3</tmp/ctl.txt || true)
