@@ -39,7 +39,7 @@ import java.util.List;
  */
 public class MainActivity extends Activity {
     private static final String URL = "http://localhost:7333/";
-    private static final String VERSION = "0.17.25";
+    private static final String VERSION = "0.17.26";
     private static final int FILE_REQUEST = 4101;
     private static final int FOLDER_REQUEST = 4102;
     private static final int PHOTOS_REQUEST = 4103;
@@ -530,8 +530,15 @@ public class MainActivity extends Activity {
             OutputStream raw = new BufferedOutputStream(conn.getOutputStream());
             int doneCount = 0;
             for (Entry e : entries) {
+                // reportFolder prefixes every path with the picked folder's own
+                // name ("mysite/css/a.css"), which the dashboard strips for
+                // display. The server writes the field name verbatim, so strip
+                // that same top segment here — the picked folder IS the root.
+                String rel = e.rel;
+                int slash = rel.indexOf('/');
+                if (slash >= 0) rel = rel.substring(slash + 1);
                 writeAscii(raw, "--" + boundary + "\r\nContent-Disposition: form-data; name="
-                        + q(e.rel) + "; filename=" + q(e.name)
+                        + q(rel) + "; filename=" + q(e.name)
                         + "\r\nContent-Type: application/octet-stream\r\n\r\n");
                 try (InputStream in = getContentResolver().openInputStream(e.uri)) {
                     byte[] buf = new byte[65536];
