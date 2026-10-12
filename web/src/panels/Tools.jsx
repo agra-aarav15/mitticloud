@@ -193,9 +193,9 @@ export default function Tools({ sites }) {
             <p className="muted tools-err">cloudflared exited — {tunnel.log[tunnel.log.length - 1]}</p>
           )}
           <p className="muted">
-            cloudflared is Cloudflare's free connector. Download the Windows exe from
-            github.com/cloudflare/cloudflared/releases (cloudflared-windows-amd64.exe) and either
-            add it to PATH or paste its full path below.
+            {tunnel && tunnel.bundled
+              ? 'The public-link connector is built into this phone — nothing to install. Tap the button and a public URL appears in a few seconds.'
+              : "cloudflared is Cloudflare's free connector. Download the Windows exe from github.com/cloudflare/cloudflared/releases (cloudflared-windows-amd64.exe) and either add it to PATH or paste its full path below."}
           </p>
           <div className="hs-btnrow">
             <input

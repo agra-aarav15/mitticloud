@@ -39,7 +39,7 @@ import java.util.List;
  */
 public class MainActivity extends Activity {
     private static final String URL = "http://localhost:7333/";
-    private static final String VERSION = "0.17.21";
+    private static final String VERSION = "0.17.22";
     private static final int FILE_REQUEST = 4101;
     private static final int FOLDER_REQUEST = 4102;
     private static final int PHOTOS_REQUEST = 4103;

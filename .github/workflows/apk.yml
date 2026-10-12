@@ -115,6 +115,34 @@ jobs:
           done
           ls -la android/app/src/main/jniLibs/*/libmittinode.so
 
+      - name: Bundle cloudflared as the public-link connector (libmittitunnel.so)
+        run: |
+          # "Get a public link" must work with nothing to install — the user is
+          # a beginner on a phone. cloudflared's official Linux builds are static
+          # Go binaries, so they run on Android as-is; the APK's native library
+          # folder is the one place Android lets an app execute from, so the
+          # binary ships there under a .so name (same trick as the Node launcher).
+          set -e
+          VER="2026.10.0"
+          BASE="https://github.com/cloudflare/cloudflared/releases/download/$VER"
+          NDK="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
+          STRIP=$(find "$NDK/toolchains/llvm/prebuilt" -type f -name "llvm-strip" | head -1)
+          test -n "$STRIP" || { echo "llvm-strip not found"; exit 1; }
+          curl -fsSL -o /tmp/cf-arm64 "$BASE/cloudflared-linux-arm64"
+          curl -fsSL -o /tmp/cf-arm   "$BASE/cloudflared-linux-arm"
+          curl -fsSL -o /tmp/cf-amd64 "$BASE/cloudflared-linux-amd64"
+          # Real sanity check: the amd64 build must run on this runner and
+          # report its version, proving the download is a live binary.
+          chmod +x /tmp/cf-amd64 && /tmp/cf-amd64 --version
+          # Drop debug info — these ship inside every APK.
+          "$STRIP" --strip-all /tmp/cf-arm64 || "$STRIP" /tmp/cf-arm64 || true
+          "$STRIP" --strip-all /tmp/cf-arm   || "$STRIP" /tmp/cf-arm   || true
+          "$STRIP" --strip-all /tmp/cf-amd64 || "$STRIP" /tmp/cf-amd64 || true
+          cp /tmp/cf-arm64 android/app/src/main/jniLibs/arm64-v8a/libmittitunnel.so
+          cp /tmp/cf-arm   android/app/src/main/jniLibs/armeabi-v7a/libmittitunnel.so
+          cp /tmp/cf-amd64 android/app/src/main/jniLibs/x86_64/libmittitunnel.so
+          ls -la android/app/src/main/jniLibs/*/libmittitunnel.so
+
       - name: Build the PTY helper (libmittish.so)
         run: |
           # A full interactive shell needs a real terminal. mittish allocates a
@@ -170,6 +198,7 @@ jobs:
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libc++_shared.so" || { echo "APK is missing libc++_shared.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittinode.so" || { echo "APK is missing libmittinode.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittish.so" || { echo "APK is missing libmittish.so for $abi"; exit 1; }
+            unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittitunnel.so" || { echo "APK is missing libmittitunnel.so for $abi"; exit 1; }
           done
           echo "APK_NAME=MittiCloud-v${VERSION}.apk" >> "$GITHUB_ENV"
 

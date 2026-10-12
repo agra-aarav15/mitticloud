@@ -31,6 +31,27 @@ const router = Router();
 
 const PORT = Number.parseInt(process.env.PORT || '', 10) || 7333;
 
+/** True when the APK's bundled cloudflared is available (embedded Android). */
+function bundledTunnelBin() {
+  const dir = process.env.MITTICLOUD_NATIVE_DIR;
+  if (dir) {
+    const bundled = path.join(dir, 'libmittitunnel.so');
+    if (fs.existsSync(bundled)) return bundled;
+  }
+  return null;
+}
+
+/**
+ * The cloudflared to run when the user did not type a path. On the Android
+ * app the APK ships a static arm64 build as libmittitunnel.so in the native
+ * library folder (the one place Android lets an app execute from), so the
+ * public-link button works with nothing to install. Everywhere else it falls
+ * back to whatever "cloudflared" resolves to on PATH.
+ */
+function defaultTunnelBin() {
+  return bundledTunnelBin() || 'cloudflared';
+}
+
 // --- tunnel state (one at a time) ---
 
 let tunnel = null; // { mode:'quick'|'token', child, url, startedAt, log:[] }
@@ -46,7 +67,9 @@ function pushLog(line) {
 }
 
 function tunnelStatus() {
-  if (!tunnel) return { running: false, mode: null, url: null, log: [] };
+  if (!tunnel) {
+    return { running: false, mode: null, url: null, log: [], bundled: Boolean(bundledTunnelBin()) };
+  }
   const alive = tunnel.child.exitCode === null && !tunnel.failed;
   return {
     running: alive,
@@ -54,6 +77,7 @@ function tunnelStatus() {
     url: tunnel.url || null,
     startedAt: tunnel.startedAt,
     log: tunnel.log.slice(-12),
+    bundled: Boolean(bundledTunnelBin()),
     ...(tunnel.failed ? { failed: tunnel.failed } : {}),
     ...(tunnel.child.exitCode !== null && !tunnel.failed
       ? { exitCode: tunnel.child.exitCode }
@@ -109,7 +133,7 @@ router.post('/tunnel/quick', async (req, res, next) => {
     if (tunnel && tunnel.child.exitCode === null) {
       return res.status(409).json({ error: 'A tunnel is already running', ...tunnelStatus() });
     }
-    const bin = String((req.body || {}).bin || 'cloudflared').trim() || 'cloudflared';
+    const bin = String((req.body || {}).bin || '').trim() || defaultTunnelBin();
     startCloudflared(bin, ['tunnel', '--url', `http://localhost:${PORT}`], 'quick');
     // the trycloudflare URL lands in stderr within a few seconds — give it a beat
     await new Promise((r) => setTimeout(r, 4000));
@@ -127,7 +151,7 @@ router.post('/tunnel/token', async (req, res, next) => {
     const token = String((req.body || {}).token || '').trim();
     if (!token) return res.status(400).json({ error: 'Paste the tunnel token from the Cloudflare dashboard' });
     if (token.length > 2000) return res.status(400).json({ error: 'That token is too long' });
-    const bin = String((req.body || {}).bin || 'cloudflared').trim() || 'cloudflared';
+    const bin = String((req.body || {}).bin || '').trim() || defaultTunnelBin();
     startCloudflared(bin, ['tunnel', 'run', '--token', token], 'token');
     await new Promise((r) => setTimeout(r, 4000));
     const st = tunnelStatus();
