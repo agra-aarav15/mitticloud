@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.23-orange)
+![Release](https://img.shields.io/badge/release-v0.17.24-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,7 +56,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.17.23
+## What you get in v0.17.24
 
 - **Public link with nothing to install.** The "Quick public URL" button under Host → Tools used to need a `cloudflared` program installed on the machine — a beginner on a phone cannot install that. The APK now ships Cloudflare's official static connector (as `libmittitunnel.so`, the same native-library-folder trick as the Node launcher), so in the app you tap the button and a public URL appears in a few seconds. Everywhere else it falls back to `cloudflared` on PATH as before.
 - **Uploads actually upload.** Photos (one or many), Files (many) and whole-folder hosting could silently do nothing on the phone: Android recreates the app while the file picker is open, which killed the page mid-upload, and a WebView cannot pick a folder with its structure at all. The app now picks and streams itself (native photo, file and folder pickers that stream straight into the server), the desktop dashboard uploads with streaming multipart, and every failure says why in plain words instead of staying silent.
