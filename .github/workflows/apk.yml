@@ -118,36 +118,38 @@ jobs:
       - name: Bundle cloudflared as the public-link connector (libmittitunnel.so)
         run: |
           # "Get a public link" must work with nothing to install — the user is
-          # a beginner on a phone. cloudflared's official Linux builds are static
-          # Go binaries, so they run on Android as-is; the APK's native library
-          # folder is the one place Android lets an app execute from, so the
-          # binary ships there under a .so name (same trick as the Node launcher).
+          # a beginner on a phone. The official cloudflared Linux builds are
+          # STATIC Go binaries: they resolve DNS only from /etc/resolv.conf,
+          # which Android does not have, so on the phone they die with
+          # "lookup ... connection refused" (and contain no RESOLV_CONF
+          # override). Termux ships the SAME version rebuilt with the Android
+          # NDK, so it resolves through Android itself — that build is what we
+          # bundle. It is a PIE executable, so it ships under a .so name in the
+          # native-library folder (the one place Android lets an app execute).
           set -e
           VER="2026.10.0"
-          BASE="https://github.com/cloudflare/cloudflared/releases/download/$VER"
+          BASE="https://packages.termux.dev/apt/termux-main/pool/main/c/cloudflared"
           NDK="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
-          # The NDK's llvm-strip is a symlink, which a -type f find misses —
-          # glob it directly, with the runner's own strip as a fallback.
           STRIP=""
           for c in "$NDK/toolchains/llvm/prebuilt/"*/bin/llvm-strip; do
             [ -x "$c" ] && STRIP="$c" && break
           done
           [ -n "$STRIP" ] || STRIP=$(command -v llvm-strip || command -v strip || true)
           test -n "$STRIP" || { echo "no usable strip tool found"; exit 1; }
-          curl -fsSL -o /tmp/cf-arm64 "$BASE/cloudflared-linux-arm64"
-          curl -fsSL -o /tmp/cf-arm   "$BASE/cloudflared-linux-arm"
-          curl -fsSL -o /tmp/cf-amd64 "$BASE/cloudflared-linux-amd64"
-          # Real sanity check: the amd64 build must run on this runner and
-          # report its version, proving the download is a live binary.
-          chmod +x /tmp/cf-amd64 && /tmp/cf-amd64 --version
-          # Drop debug info — these ship inside every APK. A strip failure
-          # keeps the unstripped binary (bigger APK, still correct).
-          "$STRIP" /tmp/cf-arm64 || echo "warn: strip failed on cf-arm64"
-          "$STRIP" /tmp/cf-arm   || echo "warn: strip failed on cf-arm"
-          "$STRIP" /tmp/cf-amd64 || echo "warn: strip failed on cf-amd64"
-          cp /tmp/cf-arm64 android/app/src/main/jniLibs/arm64-v8a/libmittitunnel.so
-          cp /tmp/cf-arm   android/app/src/main/jniLibs/armeabi-v7a/libmittitunnel.so
-          cp /tmp/cf-amd64 android/app/src/main/jniLibs/x86_64/libmittitunnel.so
+          for pair in aarch64:arm64-v8a arm:armeabi-v7a x86_64:x86_64; do
+            arch="${pair%%:*}"; abi="${pair##*:}"
+            curl -fsSL -o /tmp/cf.deb "$BASE/cloudflared_${VER}_${arch}.deb"
+            rm -rf /tmp/cfx && mkdir -p /tmp/cfx
+            ( cd /tmp/cfx && ar x /tmp/cf.deb && tar xf data.tar.xz 2>/dev/null || true )
+            BIN=/tmp/cfx/data/data/com.termux/files/usr/bin/cloudflared
+            test -f "$BIN" || { echo "cloudflared binary missing in $arch deb"; exit 1; }
+            # Real sanity check: it must be the Android build (linker64), not a
+            # static Linux binary — otherwise the phone DNS bug returns.
+            file "$BIN" | grep -q "interpreter /system/bin/linker" \
+              || { echo "$abi cloudflared is not an Android build"; file "$BIN"; exit 1; }
+            "$STRIP" "$BIN" || echo "warn: strip failed on $abi"
+            cp "$BIN" "android/app/src/main/jniLibs/$abi/libmittitunnel.so"
+          done
           ls -la android/app/src/main/jniLibs/*/libmittitunnel.so
 
       - name: Build the PTY helper (libmittish.so)

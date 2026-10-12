@@ -85,24 +85,6 @@ function tunnelStatus() {
   };
 }
 
-/**
- * Android has no /etc/resolv.conf, so a static Go binary like cloudflared has
- * no nameservers and its very first lookup dies with "connection refused".
- * Normal Android apps resolve through the OS; a forked executable cannot.
- * Write our own resolv.conf (public nameservers) and point RESOLV_CONF at it —
- * verified on the OnePlus 6T: this alone takes the tunnel to "Requesting new
- * quick Tunnel". Rewritten on every start so it always exists.
- */
-function writeTunnelResolvConf() {
-  try {
-    const file = path.join(DATA_DIR, 'tunnel-resolv.conf');
-    fs.writeFileSync(file, 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n');
-    return file;
-  } catch {
-    return null; // the tunnel will fail with the same DNS error and say why
-  }
-}
-
 function startCloudflared(bin, args, mode) {
   // The bin string becomes a process name — refuse anything process-like.
   // The bundled path is built from the APK's own native-library dir (Android
@@ -111,14 +93,9 @@ function startCloudflared(bin, args, mode) {
   if (!isBundled && !/^[a-z0-9_\-.:\\\/() ]+$/i.test(bin)) {
     throw Object.assign(new Error('cloudflared path looks wrong — use a plain path or "cloudflared"'), { status: 400 });
   }
-  const env = { ...process.env };
-  if (isBundled) {
-    const rc = writeTunnelResolvConf();
-    if (rc) env.RESOLV_CONF = rc;
-  }
   let child;
   try {
-    child = spawn(bin, args, { windowsHide: true, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(bin, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
     // missing binary throws synchronously — surface it as a failed tunnel,
     // not a 500 the UI cannot render

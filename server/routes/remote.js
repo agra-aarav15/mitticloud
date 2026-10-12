@@ -1,7 +1,7 @@
 // Remote — the SSH door ZCode's "Remote connection → SSH" method connects to.
 // GET reports the real state (the port actually listening, the fingerprint).
-// POST enable/disable starts or stops the embedded server. Writes sit under the
-// global /api lock guard, so an owner-locked cloud needs the token to change them.
+// POST enable/disable starts or stops the embedded server. These are open like
+// the rest of the app: the only secret is the SSH password itself.
 import { Router } from 'express';
 import net from 'node:net';
 
@@ -55,7 +55,7 @@ function describe(state) {
     fingerprint: state.running ? hostFingerprint() : null,
     hostKeyDir: SSH_DIR,
     // ZCode's SSH fields, exactly as its wizard asks for them
-    zcode: { host, port, username: sshUser(), password: 'your MittiCloud lock token' },
+    zcode: { host, port, username: sshUser(), password: 'your MittiCloud SSH password' },
   };
 }
 
