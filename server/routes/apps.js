@@ -13,11 +13,12 @@
 //   POST   /api/apps/:name/export              zip of the app + mitti.json manifest
 import express, { Router } from 'express';
 import multer from 'multer';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-import { resolveSafe, PathError } from '../lib/paths.js';
+import { DATA_DIR, resolveSafe, PathError } from '../lib/paths.js';
 import { zipRead } from '../lib/zip.js';
 import { buildDirZip } from '../lib/dirzip.js';
 import {
@@ -118,6 +119,56 @@ router.post('/:name/files', async (req, res, next) => {
     res.json({ ok: true, files: planned.length });
   } catch (err) {
     next(err);
+  }
+});
+
+// Multipart folder upload: part field name = target path, part body = bytes.
+// Same contract as /api/sites/:name/upload — streams structure and big files
+// without base64, used by the web dashboard and the app's native picker.
+const UPLOAD_TMP_DIR = path.join(DATA_DIR, 'upload-tmp');
+fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
+const uploadMany = multer({
+  storage: multer.diskStorage({
+    destination: UPLOAD_TMP_DIR,
+    filename(req, file, cb) {
+      cb(null, `app-upload-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`);
+    },
+  }),
+  limits: { files: 5000, fileSize: MAX_UPLOAD_BYTES },
+});
+
+router.post('/:name/upload', uploadMany.any(), async (req, res, next) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  const staged = [];
+  try {
+    const root = appDir(req.params.name);
+    if (files.length === 0) {
+      throw new PathError('Send files as multipart parts whose field name is the target path');
+    }
+    for (const f of files) {
+      const rel = String(f.fieldname ?? '').replace(/\\/g, '/');
+      if (!rel || rel.startsWith('/') || rel.split('/').some((s) => s === '' || s === '.' || s === '..')) {
+        throw new PathError(`Bad file path: ${rel || '(empty)'}`);
+      }
+      staged.push({ rel, abs: resolveSafe(rel, root), tmp: f.path });
+    }
+    for (const p of staged) {
+      await fsp.mkdir(path.dirname(p.abs), { recursive: true });
+      try {
+        await fsp.rename(p.tmp, p.abs);
+      } catch (err) {
+        if (err.code !== 'EXDEV') throw err;
+        await fsp.copyFile(p.tmp, p.abs);
+      }
+      p.tmp = null;
+    }
+    res.json({ ok: true, files: staged.length });
+  } catch (err) {
+    next(err);
+  } finally {
+    for (const p of staged) {
+      if (p.tmp) await fsp.unlink(p.tmp).catch(() => {});
+    }
   }
 });
 

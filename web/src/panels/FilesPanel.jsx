@@ -295,6 +295,7 @@ export default function FilesPanel() {
     setUploading(true)
     let ok = 0
     let failed = 0
+    let firstErr = ''
     for (let i = 0; i < files.length; i++) {
       if (mountedRef.current) setProgress('Uploading ' + (i + 1) + '/' + files.length)
       try {
@@ -303,9 +304,11 @@ export default function FilesPanel() {
       } catch (err) {
         if (err && err.status === 401) {
           failed = files.length - i
+          firstErr = err.message || ''
           break
         }
         failed++
+        if (!firstErr) firstErr = err && err.message ? err.message : ''
       }
     }
     if (mountedRef.current) {
@@ -313,12 +316,72 @@ export default function FilesPanel() {
       setProgress('')
     }
     if (ok) toast(ok === 1 ? '1 file uploaded' : ok + ' files uploaded', 'ok')
-    if (failed) toast(failed === 1 ? '1 upload failed' : failed + ' uploads failed', 'err')
+    if (failed)
+      toast(
+        (failed === 1 ? '1 upload failed' : failed + ' uploads failed') + (firstErr ? ': ' + firstErr : ''),
+        'err'
+      )
     if (ok) {
       load(path)
       loadUsage()
     }
   }
+
+  // Inside the Android app the phone picks and streams the files itself, so
+  // an upload survives Android recreating this WebView while the picker is
+  // open. Desktop keeps the plain file input.
+  const native = typeof window !== 'undefined' && window.MittiCloud && window.MittiCloud.pickFiles
+    ? window.MittiCloud
+    : null
+
+  const startUploadPick = () => {
+    if (native) {
+      setUploading(true)
+      native.pickFiles(path)
+    } else if (fileInputRef.current) fileInputRef.current.click()
+  }
+
+  useEffect(() => {
+    window.onNativeFilesProgress = (json) => {
+      try {
+        const p = JSON.parse(json)
+        if (mountedRef.current) setProgress('Uploading ' + p.done + '/' + p.total)
+      } catch {
+        /* a malformed progress line is not worth a toast */
+      }
+    }
+    window.onNativeFilesDone = (json) => {
+      let r = null
+      try {
+        r = JSON.parse(json)
+      } catch {
+        r = null
+      }
+      if (mountedRef.current) {
+        setUploading(false)
+        setProgress('')
+      }
+      if (!r) return
+      if (r.done) toast(r.done === 1 ? '1 file uploaded' : r.done + ' files uploaded', 'ok')
+      if (!r.done && !r.failed && r.error) toast(r.error, 'err')
+      if (r.failed) {
+        toast(
+          (r.failed === 1 ? '1 upload failed' : r.failed + ' uploads failed') +
+            (r.firstError ? ': ' + r.firstError : ''),
+          'err'
+        )
+      }
+      if (r.done) {
+        load(path)
+        loadUsage()
+      }
+    }
+    return () => {
+      delete window.onNativeFilesProgress
+      delete window.onNativeFilesDone
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path])
 
   const sorted = entries
     ? [...entries].sort((a, b) => {
@@ -400,20 +463,20 @@ export default function FilesPanel() {
             </button>
           )}
 
-          <label className="btn">
+          <button className="btn" onClick={startUploadPick} disabled={uploading}>
             <Icon name="upload" size={15} />
             Upload files
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
-              multiple
-              onChange={onUploadPick}
-              disabled={uploading}
-              aria-label="Upload files"
-              tabIndex={-1}
-            />
-          </label>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            multiple
+            onChange={onUploadPick}
+            disabled={uploading}
+            aria-label="Upload files"
+            tabIndex={-1}
+          />
           {uploading && progress ? <span className="fl-progress">{progress}</span> : null}
 
           <form className="fl-search" role="search" onSubmit={(e) => e.preventDefault()}>

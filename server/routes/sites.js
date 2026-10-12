@@ -20,6 +20,7 @@
 // capped at 1 MB. body-parser's req._body guard prevents double parsing.
 import express, { Router } from 'express';
 import multer from 'multer';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -41,6 +42,45 @@ const uploadZip = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_ZIP_BYTES },
 });
+
+// Streaming multipart path for folder uploads (web batch + the Android app's
+// native folder picker). Each part's FIELD NAME is the target path inside the
+// site, so structure survives without base64 or a per-file size cliff.
+const MAX_SITE_FILE_BYTES = 200 * 1024 * 1024;
+const UPLOAD_TMP_DIR = path.join(DATA_DIR, 'upload-tmp');
+fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
+const uploadMany = multer({
+  storage: multer.diskStorage({
+    destination: UPLOAD_TMP_DIR,
+    filename(req, file, cb) {
+      cb(null, `site-upload-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`);
+    },
+  }),
+  limits: { files: 5000, fileSize: MAX_SITE_FILE_BYTES },
+});
+
+/** Reject anything that is not a clean relative path (no '..', no leading '/'). */
+function sanitizeRel(raw) {
+  const rel = String(raw ?? '').trim().replace(/\\/g, '/');
+  if (!rel) throw new PathError('Each file part needs a non-empty field name (its target path)');
+  if (rel.startsWith('/')) throw new PathError('rel must be a relative path (no leading "/"): ' + rel);
+  const segments = rel.split('/');
+  if (segments.some((s) => s === '' || s === '.' || s === '..')) {
+    throw new PathError('rel may not contain ".." or empty path segments: ' + rel);
+  }
+  return segments.join('/');
+}
+
+/** Move an uploaded temp file into the site (cross-device safe). */
+async function moveIntoPlace(tmpPath, destAbs) {
+  try {
+    await fsp.rename(tmpPath, destAbs);
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+    await fsp.copyFile(tmpPath, destAbs);
+    await fsp.unlink(tmpPath).catch(() => {});
+  }
+}
 
 const apiRouter = Router();
 const serveRouter = Router();
@@ -193,6 +233,36 @@ apiRouter.post('/:name/files', express.json({ limit: MAX_UPLOAD_BODY }), async (
     res.json({ written: staged.length, site: name });
   } catch (err) {
     next(err);
+  }
+});
+
+// Multipart folder upload: part field name = target path, part body = bytes.
+// Validates every path before writing any file, and always clears temp files.
+apiRouter.post('/:name/upload', uploadMany.any(), async (req, res, next) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  try {
+    const name = req.params.name;
+    if (!isSiteName(name)) return res.status(404).json({ error: 'Site not found: ' + name });
+    const siteDir = path.join(SITES_DIR, name);
+    if (!fs.existsSync(siteDir)) return res.status(404).json({ error: 'Site not found: ' + name });
+    if (files.length === 0) {
+      return res.status(400).json({ error: 'Send files as multipart parts whose field name is the target path' });
+    }
+    const staged = files.map((f) => ({ rel: sanitizeRel(f.fieldname), tmp: f.path }));
+    for (const s of staged) resolveSafe(s.rel, siteDir); // containment, before any write
+    for (const s of staged) {
+      const abs = resolveSafe(s.rel, siteDir);
+      await fsp.mkdir(path.dirname(abs), { recursive: true });
+      await moveIntoPlace(s.tmp, abs);
+      s.tmp = null;
+    }
+    res.json({ ok: true, written: staged.length, site: name });
+  } catch (err) {
+    next(err);
+  } finally {
+    for (const f of files) {
+      if (f && f.path) await fsp.unlink(f.path).catch(() => {});
+    }
   }
 });
 

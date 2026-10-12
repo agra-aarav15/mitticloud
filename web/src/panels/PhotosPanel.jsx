@@ -64,14 +64,16 @@ export default function PhotosPanel() {
     let ok = 0
     let dup = 0
     let failed = 0
+    let firstErr = ''
     for (let i = 0; i < files.length; i++) {
       if (mountedRef.current) setProgress('Uploading ' + (i + 1) + '/' + files.length)
       try {
         const r = await uploadOneReq(files[i])
         if (r && r.duplicate) dup++
         else ok++
-      } catch {
+      } catch (err) {
         failed++
+        if (!firstErr) firstErr = err && err.message ? err.message : ''
       }
     }
     if (mountedRef.current) {
@@ -86,7 +88,11 @@ export default function PhotosPanel() {
     } else if (dup) {
       toast(dup === 1 ? '1 duplicate skipped' : dup + ' duplicates skipped', 'info')
     }
-    if (failed) toast(failed === 1 ? '1 upload failed' : failed + ' uploads failed', 'err')
+    if (failed)
+      toast(
+        (failed === 1 ? '1 upload failed' : failed + ' uploads failed') + (firstErr ? ': ' + firstErr : ''),
+        'err'
+      )
     load()
   }
 
@@ -114,17 +120,49 @@ export default function PhotosPanel() {
     }
   }
 
+  // Inside the Android app the phone itself picks and streams the photos, so
+  // the upload survives whatever Android does to this WebView while the
+  // picker is open. Desktop keeps the plain file input.
+  const native = typeof window !== 'undefined' && window.MittiCloud && window.MittiCloud.pickPhotos
+    ? window.MittiCloud
+    : null
+
+  const startPick = () => {
+    if (native) {
+      setUploading(true)
+      native.pickPhotos()
+    } else if (inputRef.current) inputRef.current.click()
+  }
+
+  useEffect(() => {
+    window.onNativePhotosDone = (json) => {
+      let r = null
+      try {
+        r = JSON.parse(json)
+      } catch {
+        r = null
+      }
+      if (mountedRef.current) setUploading(false)
+      if (!r) return
+      if (Array.isArray(r.uploaded)) {
+        toast(r.uploaded.length === 1 ? '1 photo uploaded' : r.uploaded.length + ' photos uploaded', 'ok')
+      } else if (r.error) {
+        toast(r.error, 'err')
+      }
+      load()
+    }
+    return () => {
+      delete window.onNativePhotosDone
+    }
+  }, [load])
+
   const count = photos ? photos.length : 0
 
   return (
     <div className="ph-panel">
       <div className="ph-toolbar">
         <div className="ph-actions">
-          <button
-            className="btn btn-primary"
-            onClick={() => inputRef.current && inputRef.current.click()}
-            disabled={uploading}
-          >
+          <button className="btn btn-primary" onClick={startPick} disabled={uploading}>
             {uploading ? <span className="ph-spinner" aria-hidden="true" /> : <Icon name="upload" size={16} />}
             {uploading ? 'Uploading...' : 'Upload Photos'}
           </button>
@@ -173,11 +211,7 @@ export default function PhotosPanel() {
             Every photo you upload lives on this phone — private, unlimited, free. Upload once,
             safe forever.
           </div>
-          <button
-            className="btn btn-primary"
-            onClick={() => inputRef.current && inputRef.current.click()}
-            disabled={uploading}
-          >
+          <button className="btn btn-primary" onClick={startPick} disabled={uploading}>
             <Icon name="upload" size={15} /> Upload your first photos
           </button>
         </div>

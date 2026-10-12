@@ -8,7 +8,6 @@ import {
   shareOrCopy,
   fetchApps,
   createApp,
-  uploadAppFiles,
   uploadAppZip,
   deployApp,
   appAction,
@@ -32,9 +31,8 @@ import './HostPanel.css'
 const POLL_MS = 30000
 const APP_POLL_MS = 3000
 const NAME_RE = /^[a-z0-9-]{1,32}$/
-const MAX_FILE_BYTES = 2 * 1024 * 1024 // server refuses files over 2 MB (static)
-const BATCH_FILES = 20
-const BATCH_BYTES = 16 * 1024 * 1024 // stay under the server's 25 MB/request cap
+const BATCH_FILES = 100
+const BATCH_BYTES = 64 * 1024 * 1024 // one multipart request stays comfortably under body limits
 
 async function j(res) {
   const d = await res.json().catch(() => ({}))
@@ -51,13 +49,6 @@ const createSite = (name) =>
     body: JSON.stringify({ name })
   }).then(j)
 
-const uploadSiteFiles = (name, files) =>
-  fetch('/api/sites/' + encodeURIComponent(name) + '/files', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files })
-  }).then(j)
-
 const uploadSiteZip = (name, file) => {
   const fd = new FormData()
   fd.append('zip', file)
@@ -69,27 +60,62 @@ const uploadSiteZip = (name, file) => {
 
 const siteUsageReq = (name) => fetch('/api/sites/' + encodeURIComponent(name) + '/usage').then(j)
 
+// Multipart folder upload: each part's field name is the target path inside
+// the project, so deep folders and big files survive without base64 or a
+// per-file size cliff. Bounded per request so one stall cannot lose everything.
+async function uploadFolderMultipart(url, files, relOf, onProgress) {
+  const batches = []
+  let cur = []
+  let curBytes = 0
+  for (const f of files) {
+    if (cur.length > 0 && (cur.length >= BATCH_FILES || curBytes + f.size > BATCH_BYTES)) {
+      batches.push(cur)
+      cur = []
+      curBytes = 0
+    }
+    cur.push(f)
+    curBytes += f.size
+  }
+  if (cur.length > 0) batches.push(cur)
+  let done = 0
+  for (const batch of batches) {
+    const fd = new FormData()
+    for (const f of batch) fd.append(relOf(f), f, f.name)
+    await j(await fetch(url, { method: 'POST', body: fd }))
+    done += batch.length
+    if (onProgress) onProgress(done, files.length)
+  }
+  return done
+}
+
+// Inside the Android app the WebView cannot hand a folder with its structure
+// (webkitdirectory is desktop-only), so the app offers a native picker that
+// streams the tree itself and reports back through these window callbacks.
+const nativeHost = () => (window.MittiCloud && window.MittiCloud.pickFolder ? window.MittiCloud : null)
+
 const deleteSite = (name) =>
   fetch('/api/sites/' + encodeURIComponent(name), { method: 'DELETE' }).then(j)
-
-// Read one File as base64 (no prefix) via FileReader.
-function readAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onerror = () => reject(new Error('Could not read ' + file.name))
-    r.onload = () => {
-      const s = String(r.result)
-      resolve(s.slice(s.indexOf(',') + 1))
-    }
-    r.readAsDataURL(file)
-  })
-}
 
 // webkitRelativePath minus the top-level folder name ("site/css/a.css" -> "css/a.css").
 function relPath(f) {
   const p = String(f.webkitRelativePath || f.name).replace(/\\/g, '/')
   const parts = p.split('/')
   return (parts.length > 1 ? parts.slice(1) : parts).join('/') || f.name
+}
+
+// The app's picker reports paths relative to the picked folder, top directory
+// included ("site/css/a.css"). Shape them like File objects so relPath,
+// detectKind and the size summaries all work unchanged.
+function normalizeNativeFiles(rep) {
+  return (rep.files || []).map((f) => {
+    const p = String(f.path || '').replace(/\\/g, '/')
+    const parts = p.split('/')
+    return {
+      webkitRelativePath: p,
+      name: parts[parts.length - 1] || p,
+      size: Number(f.size) || 0,
+    }
+  })
 }
 
 // "My Portfolio (v2)" -> "my-portfolio-v2" — a name the server accepts.
@@ -157,6 +183,7 @@ export default function HostPanel() {
 
   // add flow
   const [picked, setPicked] = useState(null) // {kind:'folder'|'zip', files?, file?, suggested}
+  const [nativePicked, setNativePicked] = useState(null) // {files:[{path,size}]} from the app's picker
   const [nameDraft, setNameDraft] = useState('')
   const [kind, setKind] = useState('site')
   const [publishing, setPublishing] = useState(false)
@@ -177,6 +204,9 @@ export default function HostPanel() {
   const mountedRef = useRef(true)
   const confirmTimerRef = useRef(null)
   const updateInputRef = useRef(null) // {target: 'site'|'app', name}
+  const folderInputRef = useRef(null)
+  const nativeTargetRef = useRef(null) // card being updated when the app picker answers
+  const nativeDoneRef = useRef(null) // resolver for the app's upload report
   const nameTouchedRef = useRef(false)
 
   const load = useCallback(async (withUsage = true) => {
@@ -266,6 +296,97 @@ export default function HostPanel() {
     if (openLogs && !(apps || []).some((a) => a.name === openLogs)) setOpenLogs(null)
   }, [apps, openLogs])
 
+  // The app streams the picked tree itself and reports through these window
+  // callbacks; the promise resolves with the server's answer.
+  const nativeUpload = (target, name) =>
+    new Promise((resolve) => {
+      nativeDoneRef.current = (json) => {
+        let r = null
+        try {
+          r = JSON.parse(json)
+        } catch {
+          r = null
+        }
+        resolve(r && typeof r.ok === 'boolean' ? r : { ok: false, error: 'Bad upload report from the app' })
+      }
+      nativeHost().uploadPicked(target, name)
+    })
+
+  const updateWithNative = async (target, name, files) => {
+    setBusyName(name)
+    setProgress('Uploading 0/' + files.length)
+    try {
+      const r = await nativeUpload(target === 'app' ? 'apps' : 'sites', name)
+      if (!r.ok) throw new Error(r.error || 'The phone could not store the folder')
+      if (target === 'app') {
+        setProgress('Restarting…')
+        await deployApp(name, files.some((f) => relPath(f) === 'package.json'))
+        setLive({ kind: 'app', name, url: null })
+        toast('App updated and restarted', 'ok')
+        await load(false)
+      } else {
+        setLive({ kind: 'site', name, url: siteUrl(name) })
+        toast('Site updated', 'ok')
+        await load(true)
+        loadHealth()
+      }
+    } catch (err) {
+      toast(err.message || 'Could not update', 'err')
+    } finally {
+      if (mountedRef.current) {
+        setBusyName(null)
+        setProgress('')
+      }
+    }
+  }
+
+  useEffect(() => {
+    window.onNativeFolderPicked = (json) => {
+      let rep = null
+      try {
+        rep = JSON.parse(json)
+      } catch {
+        rep = null
+      }
+      if (!rep || !Array.isArray(rep.files) || rep.files.length === 0) {
+        toast((rep && rep.error) || 'No files came back from the folder picker', 'err')
+        return
+      }
+      const files = normalizeNativeFiles(rep)
+      const target = nativeTargetRef.current
+      nativeTargetRef.current = null
+      if (target) {
+        updateWithNative(target.target, target.name, files)
+        return
+      }
+      const suggested = suggestName(String(files[0].webkitRelativePath || '').split('/')[0])
+      nameTouchedRef.current = false
+      setPicked(null)
+      setNativePicked({ files })
+      setNameDraft(suggested)
+      setKind(detectKind(files.map(relPath)))
+    }
+    window.onNativeUploadProgress = (json) => {
+      try {
+        const p = JSON.parse(json)
+        if (mountedRef.current) setProgress('Uploading ' + p.done + '/' + p.total)
+      } catch {
+        /* a malformed progress line is not worth a toast */
+      }
+    }
+    window.onNativeUploadDone = (json) => {
+      const done = nativeDoneRef.current
+      nativeDoneRef.current = null
+      if (done) done(json)
+    }
+    return () => {
+      delete window.onNativeFolderPicked
+      delete window.onNativeUploadProgress
+      delete window.onNativeUploadDone
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // --- add flow: pick -> confirm (auto name + kind chip) -> publish ---
   const setFolderInput = (el) => {
     if (el) el.webkitdirectory = true
@@ -311,23 +432,19 @@ export default function HostPanel() {
 
   const publish = async () => {
     const siteName = validName()
-    if (!siteName || !picked || publishing) return
+    const source = nativePicked ? { kind: 'native', files: nativePicked.files } : picked
+    if (!siteName || !source || publishing) return
     setPublishing(true)
     try {
-      if (kind === 'app') await publishApp(siteName)
-      else await publishSite(siteName)
+      if (kind === 'app') await publishApp(siteName, source)
+      else await publishSite(siteName, source)
+      setNativePicked(null)
     } finally {
       if (mountedRef.current) setPublishing(false)
     }
   }
 
-  const publishSite = async (siteName) => {
-    const usable =
-      picked.kind === 'folder' ? picked.files.filter((f) => f.size <= MAX_FILE_BYTES) : null
-    if (picked.kind === 'folder' && usable.length === 0) {
-      toast('Every file was larger than 2 MB — nothing to upload', 'err')
-      return
-    }
+  const publishSite = async (siteName, source) => {
     setProgress('Creating ' + siteName + '…')
     try {
       try {
@@ -336,34 +453,23 @@ export default function HostPanel() {
         if (err.status !== 409) throw err
         toast('Already exists — updating its files', 'info')
       }
-      if (picked.kind === 'zip') {
+      if (source.kind === 'zip') {
         setProgress('Publishing zip…')
-        const r = await uploadSiteZip(siteName, picked.file)
+        const r = await uploadSiteZip(siteName, source.file)
         const n = r && typeof r.files === 'number' ? r.files : null
         toast(n != null ? 'Published ' + n + ' files' : 'Site published', 'ok')
+      } else if (source.kind === 'native') {
+        const r = await nativeUpload('sites', siteName)
+        if (!r.ok) throw new Error(r.error || 'The phone could not store the folder')
+        toast('Published ' + (r.written || source.files.length) + ' files', 'ok')
       } else {
-        const batches = []
-        let cur = []
-        let curBytes = 0
-        for (const f of usable) {
-          if (cur.length > 0 && (cur.length >= BATCH_FILES || curBytes + f.size > BATCH_BYTES)) {
-            batches.push(cur)
-            cur = []
-            curBytes = 0
-          }
-          cur.push(f)
-          curBytes += f.size
-        }
-        if (cur.length > 0) batches.push(cur)
-        let done = 0
-        setProgress('Uploading 0/' + usable.length)
-        for (const batch of batches) {
-          const files = []
-          for (const f of batch) files.push({ path: relPath(f), contentBase64: await readAsBase64(f) })
-          await uploadSiteFiles(siteName, files)
-          done += batch.length
-          if (mountedRef.current) setProgress('Uploading ' + done + '/' + usable.length)
-        }
+        setProgress('Uploading 0/' + source.files.length)
+        await uploadFolderMultipart(
+          '/api/sites/' + encodeURIComponent(siteName) + '/upload',
+          source.files,
+          relPath,
+          (done, total) => mountedRef.current && setProgress('Uploading ' + done + '/' + total)
+        )
       }
       setLive({ kind: 'site', name: siteName, url: siteUrl(siteName) })
       setPicked(null)
@@ -377,9 +483,9 @@ export default function HostPanel() {
     }
   }
 
-  const publishApp = async (appName) => {
+  const publishApp = async (appName, source) => {
     const hasPkg =
-      picked.kind === 'zip' ? true : picked.files.some((f) => relPath(f) === 'package.json')
+      source.kind === 'zip' ? true : source.files.some((f) => relPath(f) === 'package.json')
     if (hasPkg && !window.confirm('This takes a few minutes and warms the phone. Start?')) {
       setProgress('')
       return
@@ -392,32 +498,20 @@ export default function HostPanel() {
         if (err.status !== 409) throw err
         toast('Already exists — updating its files', 'info')
       }
-      if (picked.kind === 'zip') {
+      if (source.kind === 'zip') {
         setProgress('Publishing zip…')
-        await uploadAppZip(appName, picked.file)
+        await uploadAppZip(appName, source.file)
+      } else if (source.kind === 'native') {
+        const r = await nativeUpload('apps', appName)
+        if (!r.ok) throw new Error(r.error || 'The phone could not store the folder')
       } else {
-        const batches = []
-        let cur = []
-        let curBytes = 0
-        for (const f of picked.files) {
-          if (cur.length > 0 && (cur.length >= BATCH_FILES || curBytes + f.size > BATCH_BYTES)) {
-            batches.push(cur)
-            cur = []
-            curBytes = 0
-          }
-          cur.push(f)
-          curBytes += f.size
-        }
-        if (cur.length > 0) batches.push(cur)
-        let done = 0
-        setProgress('Uploading 0/' + picked.files.length)
-        for (const batch of batches) {
-          const files = []
-          for (const f of batch) files.push({ path: relPath(f), contentBase64: await readAsBase64(f) })
-          await uploadAppFiles(appName, files)
-          done += batch.length
-          if (mountedRef.current) setProgress('Uploading ' + done + '/' + picked.files.length)
-        }
+        setProgress('Uploading 0/' + source.files.length)
+        await uploadFolderMultipart(
+          '/api/apps/' + encodeURIComponent(appName) + '/upload',
+          source.files,
+          relPath,
+          (done, total) => mountedRef.current && setProgress('Uploading ' + done + '/' + total)
+        )
       }
       setProgress(hasPkg ? 'Installing packages…' : 'Starting…')
       const r = await deployApp(appName, hasPkg)
@@ -435,6 +529,11 @@ export default function HostPanel() {
 
   // --- update an existing card with a fresh folder/zip pick ---
   const askUpdate = (target, name) => {
+    if (nativeHost()) {
+      nativeTargetRef.current = { target, name }
+      nativeHost().pickFolder()
+      return
+    }
     updateInputRef.current = { target, name }
     const el = document.getElementById(target === 'app' ? 'app-update-input' : 'site-update-input')
     if (el) el.click()
@@ -448,67 +547,31 @@ export default function HostPanel() {
     setBusyName(meta.name)
     try {
       if (target === 'site') {
-        const tooBig = files.filter((f) => f.size > MAX_FILE_BYTES)
-        const usable = files.filter((f) => f.size <= MAX_FILE_BYTES)
-        if (!usable.length) {
-          toast('Every file was larger than 2 MB — nothing to upload', 'err')
-          return
-        }
         setProgress('Updating ' + meta.name + '…')
         try {
           await createSite(meta.name)
         } catch (err) {
           if (err.status !== 409) throw err
         }
-        const batches = []
-        let cur = []
-        let curBytes = 0
-        for (const f of usable) {
-          if (cur.length > 0 && (cur.length >= BATCH_FILES || curBytes + f.size > BATCH_BYTES)) {
-            batches.push(cur)
-            cur = []
-            curBytes = 0
-          }
-          cur.push(f)
-          curBytes += f.size
-        }
-        if (cur.length) batches.push(cur)
-        let done = 0
-        for (const batch of batches) {
-          const out = []
-          for (const f of batch) out.push({ path: relPath(f), contentBase64: await readAsBase64(f) })
-          await uploadSiteFiles(meta.name, out)
-          done += batch.length
-          if (mountedRef.current) setProgress('Uploading ' + done + '/' + usable.length)
-        }
+        await uploadFolderMultipart(
+          '/api/sites/' + encodeURIComponent(meta.name) + '/upload',
+          files,
+          relPath,
+          (done, total) => mountedRef.current && setProgress('Uploading ' + done + '/' + total)
+        )
         setLive({ kind: 'site', name: meta.name, url: siteUrl(meta.name) })
-        toast('Site updated' + (tooBig.length ? ' · skipped ' + tooBig.length + ' over 2 MB' : ''), 'ok')
+        toast('Site updated', 'ok')
         await load(true)
         loadHealth()
       } else {
         const hasPkg = files.some((f) => relPath(f) === 'package.json')
         setProgress('Updating ' + meta.name + '…')
-        const batches = []
-        let cur = []
-        let curBytes = 0
-        for (const f of files) {
-          if (cur.length > 0 && (cur.length >= BATCH_FILES || curBytes + f.size > BATCH_BYTES)) {
-            batches.push(cur)
-            cur = []
-            curBytes = 0
-          }
-          cur.push(f)
-          curBytes += f.size
-        }
-        if (cur.length) batches.push(cur)
-        let done = 0
-        for (const batch of batches) {
-          const out = []
-          for (const f of batch) out.push({ path: relPath(f), contentBase64: await readAsBase64(f) })
-          await uploadAppFiles(meta.name, out)
-          done += batch.length
-          if (mountedRef.current) setProgress('Uploading ' + done + '/' + files.length)
-        }
+        await uploadFolderMultipart(
+          '/api/apps/' + encodeURIComponent(meta.name) + '/upload',
+          files,
+          relPath,
+          (done, total) => mountedRef.current && setProgress('Uploading ' + done + '/' + total)
+        )
         setProgress(hasPkg ? 'Installing packages…' : 'Restarting…')
         await deployApp(meta.name, hasPkg)
         setLive({ kind: 'app', name: meta.name, url: null })
@@ -680,21 +743,32 @@ export default function HostPanel() {
       <section className="hs-block">
         <div className="hs-label muted">Add a project</div>
         <div className="hs-form glass">
-          {!picked ? (
+          {!picked && !nativePicked ? (
             <div className="hs-form-row">
-              <label className="btn btn-primary hs-pick">
+              <button
+                className="btn btn-primary"
+                disabled={publishing}
+                onClick={() => {
+                  if (nativeHost()) nativeHost().pickFolder()
+                  else if (folderInputRef.current) folderInputRef.current.click()
+                }}
+              >
                 <Icon name="upload" size={15} />
                 Choose a folder
-                <input
-                  ref={setFolderInput}
-                  type="file"
-                  className="hs-file"
-                  onChange={pickFolder}
-                  multiple
-                  disabled={publishing}
-                  aria-label="Choose a folder to host"
-                />
-              </label>
+              </button>
+              <input
+                ref={(el) => {
+                  folderInputRef.current = el
+                  setFolderInput(el)
+                }}
+                type="file"
+                className="hs-file"
+                onChange={pickFolder}
+                multiple
+                disabled={publishing}
+                aria-label="Choose a folder to host"
+                tabIndex={-1}
+              />
               <label className="btn hs-pick">
                 <Icon name="file" size={15} />
                 Upload a ZIP
@@ -708,8 +782,9 @@ export default function HostPanel() {
                 />
               </label>
               <span className="hs-form-hint muted">
-                A folder with a package.json or a .js entry runs as a live app. Everything else is a
-                website.
+                Any folder works. Websites in every language host as they are; a folder with a
+                package.json (Next.js, Express, any Node project) runs as a live app with a real
+                backend.
               </span>
             </div>
           ) : (
@@ -729,8 +804,8 @@ export default function HostPanel() {
                 />
                 <span className="hs-kind-note muted">
                   {kind === 'app'
-                    ? 'Detected: a project that runs on the phone. It builds itself if it needs to.'
-                    : 'Detected: a website. Live as soon as it is added.'}
+                    ? 'Detected: a project that runs on the phone (Node.js backend). It installs and builds itself.'
+                    : 'Detected: a website. Every file type hosts — HTML, CSS, JS, images, fonts, video.'}
                 </span>
               </div>
               <div className="hs-confirm-row">
@@ -742,6 +817,7 @@ export default function HostPanel() {
                   className="btn"
                   onClick={() => {
                     setPicked(null)
+                    setNativePicked(null)
                     setNameDraft('')
                   }}
                   disabled={publishing}
@@ -749,9 +825,15 @@ export default function HostPanel() {
                   Cancel
                 </button>
                 <span className="hs-form-hint muted">
-                  {picked.kind === 'zip'
-                    ? 'ZIP — ' + picked.file.name
-                    : picked.files.length + ' files · ' + humanizeBytes(picked.files.reduce((s, f) => s + f.size, 0))}
+                  {nativePicked
+                    ? nativePicked.files.length +
+                      ' files · ' +
+                      humanizeBytes(nativePicked.files.reduce((s, f) => s + (f.size || 0), 0))
+                    : picked.kind === 'zip'
+                      ? 'ZIP — ' + picked.file.name
+                      : picked.files.length +
+                        ' files · ' +
+                        humanizeBytes(picked.files.reduce((s, f) => s + f.size, 0))}
                 </span>
               </div>
               {publishing && progress ? <div className="hs-progress">{progress}</div> : null}

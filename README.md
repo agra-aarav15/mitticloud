@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.20-orange)
+![Release](https://img.shields.io/badge/release-v0.17.21-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -56,8 +56,11 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 
 ---
 
-## What you get in v0.17.20
+## What you get in v0.17.21
 
+- **Uploads actually upload.** Photos (one or many), Files (many) and whole-folder hosting could silently do nothing on the phone: Android recreates the app while the file picker is open, which killed the page mid-upload, and a WebView cannot pick a folder with its structure at all. The app now picks and streams itself (native photo, file and folder pickers that stream straight into the server), the desktop dashboard uploads with streaming multipart, and every failure says why in plain words instead of staying silent.
+- **Any website, any language, full stack.** Hosting is not "HTML only": static sites serve every file type, and a folder with a package.json runs as a live Node app (Next.js, Express, anything) with install, build and start handled on the phone. The old 2 MB-per-file cap on folder uploads is gone — files stream up to 200 MB each.
+- **New app icon.** The launcher icon and the PWA icons use the new MittiCloud mark.
 - **A full interactive SSH shell.** The shell channel used plain pipes, so there was no terminal: `isatty()` was false and interactive tools refused to run. The APK now bundles `libmittish.so`, a small PTY proxy (packaged like the Node launcher so Android will execute it), and an interactive session gets a real terminal with working line editing, colours, and window-size changes.
 - **ZCode and Cursor can now connect to the phone.** Their Remote-SSH uploads its own `node` and a JavaScript server, then runs them together. Android cannot execute that uploaded Linux binary, so the session died with "Permission denied". MittiCloud now recognises that exact launch and runs the server with the phone's own Node instead — and finds the real shell and PATH Android needs. Not yet verified end to end on a phone.
 - **The app is the main path, not Termux.** The phone setup guide leads with the APK — install, tap Start, done — and keeps Termux as the advanced option.
