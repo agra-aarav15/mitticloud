@@ -18,3 +18,5 @@ android/app/build/
 android/.gradle/
 android/local.properties
 android/build/
+tmp-verify/
+.tmp-*.png
