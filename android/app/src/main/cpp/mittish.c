@@ -190,5 +190,9 @@ int main(int argc, char **argv) {
   // process is about to exit and init adopts anything still alive.
   int status = 0;
   (void)waitpid(pid, &status, 0);
+  // The shell's exit status is the command's exit status — pass it through so
+  // `exit 7` over SSH really reports 7.
+  if (WIFEXITED(status)) return WEXITSTATUS(status);
+  if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
   return 0;
 }
