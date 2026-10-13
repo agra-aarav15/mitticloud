@@ -8,7 +8,8 @@
 //   POST   /api/apps/:name/deploy { install }  npm install (if package.json) + start
 //   POST   /api/apps/:name/start  { force }    POST .../stop   POST .../restart
 //   GET    /api/apps/:name/logs                last 200 lines + last install log
-//   PATCH  /api/apps/:name       { entry, env, runOnBoot, ramCapMB }
+//   PATCH  /api/apps/:name       { entry, env, runOnBoot, ramCapMB,
+//                                  startCommand, installCommand }
 //   DELETE /api/apps/:name                     stop + remove folder + registry
 //   POST   /api/apps/:name/export              zip of the app + mitti.json manifest
 import express, { Router } from 'express';
@@ -28,10 +29,12 @@ import {
   appState,
   createApp,
   deleteApp,
+  getRecord,
   installLog,
   listApps,
   npmInstallAvailable,
   restartApp,
+  runCustomInstall,
   runNpmBuild,
   runNpmInstall,
   setDeployStep,
@@ -213,14 +216,22 @@ router.post('/:name/deploy', async (req, res, next) => {
     const name = validName(req.params.name);
     const dirAbs = appDir(name);
     const wantInstall = req.body?.install !== false;
-    const profile = classifyProject(dirAbs);
+    const rec = getRecord(name);
+    // the saved start command is part of classification: it can turn an
+    // otherwise unrunnable folder into a 'custom' app
+    const profile = classifyProject(dirAbs, rec);
     const hasPkg = fs.existsSync(path.join(dirAbs, 'package.json'));
     let install = null;
     let built = false;
     // one install or build at a time on the phone — a second project waits its turn
     setDeployStep(name, 'waiting');
+    const customInstall = rec && rec.installCommand ? rec.installCommand.trim() : '';
     const outcome = await buildQueue.enqueue(async () => {
-      if (wantInstall && hasPkg) {
+      if (wantInstall && customInstall) {
+        setDeployStep(name, 'installing');
+        install = await runCustomInstall(name, customInstall);
+        if (!install.ok) return { step: 'install', error: install.error || 'the install command failed' };
+      } else if (wantInstall && hasPkg) {
         setDeployStep(name, 'installing');
         if (!(await npmInstallAvailable())) {
           throw new AppError(

@@ -26,12 +26,23 @@ const setFavoriteReq = (path, favorite) =>
 const deletePhotoReq = (path) =>
   fetch('/api/photos?path=' + encodeURIComponent(path), { method: 'DELETE' }).then(j)
 
+// Selective deletion: one request carrying every picked path.
+const bulkDeleteReq = (paths) =>
+  fetch('/api/photos/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths })
+  }).then(j)
+
 const PHOTOS_ARCHIVE_URL = '/api/photos/archive'
 
 export default function PhotosPanel() {
   const [photos, setPhotos] = useState(null) // null = first load (skeletons)
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState('')
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState(() => new Set())
+  const [deleting, setDeleting] = useState(false)
   const inputRef = useRef(null)
   const mountedRef = useRef(true)
 
@@ -107,6 +118,46 @@ export default function PhotosPanel() {
     }
   }
 
+  // Selective deletion: checkboxes on every tile, one confirm, one request.
+  const toggleSel = (path) => {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    setSelected((s) => (s.size === count ? new Set() : new Set((photos || []).map((p) => p.path))))
+  }
+
+  const exitSelect = () => {
+    setSelecting(false)
+    setSelected(new Set())
+  }
+
+  const onBulkDelete = async () => {
+    const paths = Array.from(selected)
+    if (!paths.length) return
+    if (!window.confirm('Delete ' + paths.length + ' photos? This cannot be undone.')) return
+    setDeleting(true)
+    try {
+      const r = await bulkDeleteReq(paths)
+      toast(
+        r.deleted + (r.deleted === 1 ? ' photo deleted' : ' photos deleted') +
+          (r.missing && r.missing.length ? ' · ' + r.missing.length + ' already gone' : ''),
+        'ok'
+      )
+      exitSelect()
+      load()
+    } catch (err) {
+      toast(err && err.message ? err.message : 'Could not delete the photos.', 'err')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   // Optimistic favorite toggle; reverts on failure.
   const toggleFav = async (p) => {
     const next = !p.favorite
@@ -159,10 +210,10 @@ export default function PhotosPanel() {
   const count = photos ? photos.length : 0
 
   return (
-    <div className="ph-panel">
+    <div className={'ph-panel' + (selecting ? ' ph-selecting' : '')}>
       <div className="ph-toolbar">
         <div className="ph-actions">
-          <button className="btn btn-primary" onClick={startPick} disabled={uploading}>
+          <button className="btn btn-primary" onClick={startPick} disabled={uploading || selecting}>
             {uploading ? <span className="ph-spinner" aria-hidden="true" /> : <Icon name="upload" size={16} />}
             {uploading ? 'Uploading...' : 'Upload Photos'}
           </button>
@@ -177,7 +228,7 @@ export default function PhotosPanel() {
             aria-hidden="true"
           />
           {uploading && progress ? <span className="ph-progress">{progress}</span> : null}
-          <button className="btn" onClick={load} disabled={uploading}>
+          <button className="btn" onClick={load} disabled={uploading || selecting}>
             <Icon name="refresh" size={16} />
             Refresh
           </button>
@@ -185,6 +236,12 @@ export default function PhotosPanel() {
             <Icon name="download" size={16} />
             Download all
           </a>
+          {count > 0 && !selecting && (
+            <button className="btn" onClick={() => setSelecting(true)}>
+              <Icon name="check" size={16} />
+              Select
+            </button>
+          )}
         </div>
         {photos && (
           <span className="ph-count muted">
@@ -192,6 +249,24 @@ export default function PhotosPanel() {
           </span>
         )}
       </div>
+
+      {selecting && (
+        <div className="ph-selectbar">
+          <span className="ph-sel-count">{selected.size} selected</span>
+          <div className="ph-actions">
+            <button className="btn" onClick={toggleAll} disabled={deleting}>
+              {selected.size === count ? 'Select none' : 'Select all'}
+            </button>
+            <button className="btn btn-danger" onClick={onBulkDelete} disabled={!selected.size || deleting}>
+              <Icon name="trash" size={16} />
+              {deleting ? 'Deleting...' : 'Delete selected'}
+            </button>
+            <button className="btn" onClick={exitSelect} disabled={deleting}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {photos === null ? (
         <div className="ph-grid" aria-hidden="true">
@@ -218,26 +293,47 @@ export default function PhotosPanel() {
       ) : (
         <div className="ph-grid">
           {photos.map((p) => (
-            <figure key={p.path} className="ph-tile glass">
+            <figure
+              key={p.path}
+              className={'ph-tile glass' + (selected.has(p.path) ? ' is-sel' : '')}
+              onClick={selecting ? () => toggleSel(p.path) : undefined}
+            >
               <div className="ph-media">
                 <img src={p.url} alt={p.name} loading="lazy" />
-                <button
-                  className={'ph-star' + (p.favorite ? ' is-fav' : '')}
-                  onClick={() => toggleFav(p)}
-                  aria-label={(p.favorite ? 'Remove from favorites: ' : 'Add to favorites: ') + p.name}
-                  aria-pressed={Boolean(p.favorite)}
-                  title={p.favorite ? 'Remove from favorites' : 'Add to favorites'}
-                >
-                  <Icon name="star" size={15} />
-                </button>
-                <button
-                  className="btn iconbtn btn-danger ph-del"
-                  onClick={() => onDelete(p)}
-                  aria-label={'Delete ' + p.name}
-                  title="Delete"
-                >
-                  <Icon name="trash" size={15} />
-                </button>
+                {selecting ? (
+                  <button
+                    className={'ph-sel' + (selected.has(p.path) ? ' is-sel' : '')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleSel(p.path)
+                    }}
+                    aria-label={(selected.has(p.path) ? 'Deselect ' : 'Select ') + p.name}
+                    aria-pressed={selected.has(p.path)}
+                    title={selected.has(p.path) ? 'Deselect' : 'Select'}
+                  >
+                    <Icon name="check" size={15} />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className={'ph-star' + (p.favorite ? ' is-fav' : '')}
+                      onClick={() => toggleFav(p)}
+                      aria-label={(p.favorite ? 'Remove from favorites: ' : 'Add to favorites: ') + p.name}
+                      aria-pressed={Boolean(p.favorite)}
+                      title={p.favorite ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      <Icon name="star" size={15} />
+                    </button>
+                    <button
+                      className="btn iconbtn btn-danger ph-del"
+                      onClick={() => onDelete(p)}
+                      aria-label={'Delete ' + p.name}
+                      title="Delete"
+                    >
+                      <Icon name="trash" size={15} />
+                    </button>
+                  </>
+                )}
               </div>
               <figcaption className="ph-meta">
                 <span className="ph-name" title={p.name}>

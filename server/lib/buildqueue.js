@@ -23,18 +23,21 @@ function readPkg(dirAbs) {
 }
 
 /**
- * How this folder should run. Pure: reads only the folder's own files.
+ * How this folder should run. Reads the folder's own files plus the app's saved
+ * settings (an owner-set start command beats every heuristic).
  * Returns { kind, hasBuild, startKind, outputDir }.
- *  - startKind: 'next' (scripts.start is `next start`), 'node' (`node <file>`),
- *    'static' (a build output folder to serve), or null (use the entry detector).
+ *  - startKind: 'custom' (owner's startCommand), 'next' (scripts.start is
+ *    `next start`), 'node' (`node <file>`), 'static' (a build output folder to
+ *    serve), or null (use the entry detector).
  */
-export function classifyProject(dirAbs) {
+export function classifyProject(dirAbs, rec = null) {
+  const custom = Boolean(rec && typeof rec.startCommand === 'string' && rec.startCommand.trim());
   const pkg = readPkg(dirAbs);
   if (!pkg) {
     return {
-      kind: KIND_WEBSITE,
+      kind: custom ? KIND_APP : KIND_WEBSITE,
       hasBuild: false,
-      startKind: null,
+      startKind: custom ? 'custom' : null,
       outputDir: null,
     };
   }
@@ -42,7 +45,8 @@ export function classifyProject(dirAbs) {
   const hasBuild = typeof scripts.build === 'string' && scripts.build.trim() !== '';
   const start = typeof scripts.start === 'string' ? scripts.start.trim() : '';
   let startKind = null;
-  if (/^next\s+start\b/.test(start)) startKind = 'next';
+  if (custom) startKind = 'custom';
+  else if (/^next\s+start\b/.test(start)) startKind = 'next';
   else if (/^node\s+\S+$/.test(start)) startKind = 'node';
 
   let outputDir = null;

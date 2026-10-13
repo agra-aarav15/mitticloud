@@ -262,11 +262,46 @@ async function waitForHttp(port, deadlineMs) {
   return false;
 }
 
+/**
+ * Run an owner-supplied start command — the "any language" door. The command goes
+ * to the platform shell exactly as typed, in the app folder, with PORT and the
+ * app's env already set, so python, php, a compiled go binary or anything else
+ * the device can execute works the same way a Node entry does.
+ */
+function runCustomCommand(command, dirAbs, childEnv, state) {
+  const sh =
+    process.platform === 'win32'
+      ? { cmd: process.env.ComSpec || 'cmd.exe', args: ['/d', '/s', '/c', command] }
+      : { cmd: process.env.SHELL || '/bin/sh', args: ['-c', command] };
+  pushLog(state, `$ ${command}`);
+  return spawn(sh.cmd, sh.args, {
+    cwd: dirAbs,
+    env: childEnv,
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
 /** Start (or restart) an app. Resolves { port, entry } once it is serving. */
 export async function startApp(name, { force = false } = {}) {
   validName(name);
   const rec = getRecord(name);
   const dirAbs = assertDir(name);
+
+  // Isolate the app from THIS repo's package.json ("type": "module"): node
+  // resolves a script's module type from the nearest package.json, so without
+  // one of its own an uploaded bare server.js inherits the ancestor type and
+  // dies with "require is not defined" wherever MittiCloud itself lives in a
+  // module-type repo. Seeded at run time (not create time) so an idle app's
+  // file count stays honest; an uploaded package.json already wins by existing.
+  const pkgFile = path.join(dirAbs, 'package.json');
+  if (!fs.existsSync(pkgFile)) {
+    try {
+      fs.writeFileSync(pkgFile, JSON.stringify({ type: 'commonjs' }, null, 2) + '\n');
+    } catch {
+      /* a read-only folder still tries to run — spawn surfaces the real error */
+    }
+  }
 
   const existing = live.get(name);
   // 'starting' with a live child means a start is genuinely in flight; a
@@ -291,10 +326,10 @@ export async function startApp(name, { force = false } = {}) {
     );
   }
 
-  const profile = classifyProject(dirAbs);
+  const profile = classifyProject(dirAbs, rec);
   const detected = detectEntry(dirAbs);
   const entry = (rec && rec.entry) || (detected && detected.entry);
-  if (profile.startKind !== 'next' && profile.startKind !== 'static') {
+  if (!['next', 'static', 'custom'].includes(profile.startKind)) {
     if (!entry) {
       throw new AppError(
         'No entry file found — add package.json with a "main", or an index.js / server.js / app.js'
@@ -327,7 +362,9 @@ export async function startApp(name, { force = false } = {}) {
       ? 'npm start (next)'
       : profile.startKind === 'static'
         ? `static ${profile.outputDir}/`
-        : `node ${entry}`;
+        : profile.startKind === 'custom'
+          ? `custom: ${rec.startCommand}`
+          : `node ${entry}`;
   pushLog(state, `starting ${label} on port ${port}`);
 
   // node.exe is a real executable — spawn it DIRECTLY (the cmd.exe shim in
@@ -351,6 +388,8 @@ export async function startApp(name, { force = false } = {}) {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+  } else if (profile.startKind === 'custom') {
+    child = runCustomCommand(rec.startCommand, dirAbs, childEnv, state);
   } else {
     child = spawn(nodeRuntime(), [entry], {
       cwd: dirAbs,
@@ -416,11 +455,7 @@ export async function startApp(name, { force = false } = {}) {
     // alive but silent — kill it and say so honestly
     state.state = 'crashed';
     pushLog(state, `no answer on port ${port} within 5 s — stopped waiting`);
-    try {
-      child.kill('SIGKILL');
-    } catch {
-      /* already gone */
-    }
+    killTree(child, true);
     throw new AppError(
       `The app did not answer on port ${port} within 5 s. It may listen on a fixed port — ` +
         `make it read process.env.PORT. Its output is in the logs.`,
@@ -438,6 +473,30 @@ export async function startApp(name, { force = false } = {}) {
   return { port, entry };
 }
 
+/**
+ * Kill a hosted child AND everything it spawned. On POSIX the child usually is
+ * the server itself (sh execs a single command), but on Windows every
+ * shell-wrapped start (npm start, a custom command) leaves a cmd.exe wrapper
+ * whose real server grandchild survives a plain kill — holding the port and
+ * our log pipes open forever. taskkill /T takes the whole tree down.
+ */
+function killTree(child, force = true) {
+  if (!child || child.pid == null || child.exitCode != null) return;
+  if (process.platform === 'win32') {
+    const args = ['/pid', String(child.pid), '/T'];
+    if (force) args.push('/F');
+    const t = spawn('taskkill', args, { windowsHide: true, stdio: 'ignore' });
+    t.on('error', () => {});
+    t.unref?.();
+    return;
+  }
+  try {
+    child.kill(force ? 'SIGKILL' : 'SIGTERM');
+  } catch {
+    /* already gone */
+  }
+}
+
 export function stopApp(name) {
   validName(name);
   const state = live.get(name);
@@ -447,18 +506,18 @@ export function stopApp(name) {
   }
   state.desiredStop = true;
   state.state = 'stopped';
-  try {
-    state.child.kill('SIGTERM');
-  } catch {
-    /* already gone */
-  }
-  setTimeout(() => {
+  if (process.platform === 'win32') {
+    // the cmd.exe wrapper never forwards a signal to the real server — take
+    // the whole tree down now instead of leaving an orphan on the port
+    killTree(state.child, true);
+  } else {
     try {
-      if (state.child) state.child.kill('SIGKILL');
+      state.child.kill('SIGTERM');
     } catch {
       /* already gone */
     }
-  }, 3000).unref();
+    setTimeout(() => killTree(state.child, true), 3000).unref();
+  }
   return { stopped: true, wasRunning: true };
 }
 
@@ -529,7 +588,7 @@ export function runNpmInstall(name, { full = false, args = null } = {}) {
     child.stderr.on('data', grow);
     const timer = setTimeout(() => {
       try {
-        child.kill('SIGKILL');
+        killTree(child, true);
       } catch {
         /* gone */
       }
@@ -559,6 +618,59 @@ export function runNpmInstall(name, { full = false, args = null } = {}) {
 /** `npm run build` in the app dir, streamed into the install log. */
 export function runNpmBuild(name) {
   return runNpmInstall(name, { full: true, args: ['run', 'build'] });
+}
+
+/**
+ * Run an owner-supplied install command (pip install, composer, go mod download…)
+ * in the app dir, streamed into the same install log npm uses.
+ */
+export function runCustomInstall(name, command) {
+  validName(name);
+  const dirAbs = assertDir(name);
+  const state = live.get(name) || { logs: [], installLog: '' };
+  live.set(name, state); // so installLog() finds it even before a first start
+  return new Promise((resolve) => {
+    const sh =
+      process.platform === 'win32'
+        ? { cmd: process.env.ComSpec || 'cmd.exe', args: ['/d', '/s', '/c', command] }
+        : { cmd: process.env.SHELL || '/bin/sh', args: ['-c', command] };
+    const child = spawn(sh.cmd, sh.args, {
+      cwd: dirAbs,
+      windowsHide: true,
+      env: buildEnv(null, 0),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    const grow = (c) => {
+      out += c.toString('utf8');
+      if (out.length > 20000) out = out.slice(-20000);
+      state.installLog = out;
+    };
+    child.stdout.on('data', grow);
+    child.stderr.on('data', grow);
+    const timer = setTimeout(() => {
+      try {
+        killTree(child, true);
+      } catch {
+        /* gone */
+      }
+      resolve({ ok: false, log: out, error: 'the install command timed out after 5 minutes' });
+    }, INSTALL_TIMEOUT_MS);
+    child.once('error', (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, log: out, error: `the install command could not start: ${err.message}` });
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve({ ok: true, log: out });
+      else
+        resolve({
+          ok: false,
+          log: out,
+          error: `the install command exited with code ${code} — read the install log for the real error`,
+        });
+    });
+  });
 }
 
 // --- listing / resources ---
@@ -627,6 +739,8 @@ export function listApps() {
       runOnBoot: Boolean(rec.runOnBoot),
       ramCapMB: rec.ramCapMB || null,
       env: rec.env || {},
+      startCommand: rec.startCommand || null,
+      installCommand: rec.installCommand || null,
       ramMB,
       bytes: onDisk.bytes,
       fileCount: onDisk.files,
@@ -656,7 +770,7 @@ function ensureMonitor() {
           state,
           `killed: using ${state.ramMB} MB, over its ${rec.ramCapMB} MB cap`
         );
-        state.child.kill('SIGKILL');
+        killTree(state.child, true);
         state.desiredStop = true; // a cap kill is final — restarting a memory hog helps nobody
         state.state = 'crashed';
       }
@@ -689,13 +803,7 @@ export async function initApps() {
 /** Kill every child — the server's exit hook calls this. Sync, best-effort. */
 export function stopAllApps() {
   for (const [name, state] of live) {
-    if (state.child) {
-      try {
-        state.child.kill('SIGKILL');
-      } catch {
-        /* gone */
-      }
-    }
+    if (state.child) killTree(state.child, true);
     if (state) {
       state.state = 'stopped';
       pushLog(state, 'stopped (server shut down)');
@@ -743,6 +851,14 @@ export function updateApp(name, patch) {
       clean[k] = String(v);
     }
     rec.env = clean;
+  }
+  for (const key of ['startCommand', 'installCommand']) {
+    if (patch[key] !== undefined) {
+      if (patch[key] === null || patch[key] === '') delete rec[key];
+      else if (typeof patch[key] === 'string' && patch[key].trim() && patch[key].length <= 500 && !/[\r\n]/.test(patch[key])) {
+        rec[key] = patch[key].trim();
+      } else throw new AppError(`${key} must be one line of at most 500 characters`);
+    }
   }
   if (patch.runOnBoot !== undefined) rec.runOnBoot = Boolean(patch.runOnBoot);
   if (patch.ramCapMB !== undefined) {

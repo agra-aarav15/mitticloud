@@ -591,6 +591,23 @@
 .hs-env-note {
   font-size: 11.5px;
 }
+/* per-app run settings: the two command inputs share the env editor's look */
+.hs-run-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.hs-env-body > input {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  outline: none;
+}
 
 /* per-site Cloudflare publish */
 .hs-cf {

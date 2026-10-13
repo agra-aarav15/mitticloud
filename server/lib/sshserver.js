@@ -31,6 +31,19 @@ const DEFAULT_USER = 'mitti';
 let server = null;
 let state = { listening: false, port: null, host: null, error: null };
 
+// Every shell/exec child a session is running. Turning SSH off must take them
+// with it — an orphaned shell keeps running (and on Windows keeps its cwd
+// handle), long after the door is closed.
+const shellChildren = new Set();
+
+/** Remember a session child until it exits on its own. */
+function trackChild(child) {
+  shellChildren.add(child);
+  child.once('close', () => shellChildren.delete(child));
+  child.once('error', () => shellChildren.delete(child));
+  return child;
+}
+
 /**
  * Read the stored host key, or create and persist one. RSA-2048 in PKCS#1 PEM:
  * ssh2 1.17 parses RSA PKCS#1 but rejects ed25519 PKCS#8 (verified), and RSA is
@@ -299,6 +312,17 @@ export function ptyHelper() {
   return null;
 }
 
+// The shell starts inside the vault. A missing cwd makes every spawn fail with
+// ENOENT, so make sure the folder exists even when nothing created it yet.
+function shellCwd() {
+  try {
+    fs.mkdirSync(VAULT_DIR, { recursive: true });
+  } catch {
+    /* best effort — spawn surfaces a truly unusable cwd honestly */
+  }
+  return VAULT_DIR;
+}
+
 // Run one shell or exec request as a child process, with its stdio on the channel.
 // `pty` is the client's terminal request (term/rows/cols) for an interactive
 // shell. Returns a { resize(rows, cols) } handle so window-change requests can
@@ -309,11 +333,23 @@ function runChild(channel, { command = null, pty = null } = {}) {
   const helper = pty ? ptyHelper() : null;
 
   if (pty && helper) {
-    return runWithPty(channel, { helper, command: rewritten, pty, env: baseEnv });
+    // A helper that fails synchronously (bad binary, odd platform) must not take
+    // the session with it — pipes still give a working shell.
+    try {
+      return runWithPty(channel, { helper, command: rewritten, pty, env: baseEnv });
+    } catch (err) {
+      notePtyFailure([], err);
+      return runWithPipes(channel, { command: rewritten, pty, env: baseEnv });
+    }
   }
+  return runWithPipes(channel, { command: rewritten, pty, env: baseEnv });
+}
 
-  const sh = shellArgs(rewritten);
-  const env = { ...baseEnv, TERM: pty ? pty.term || 'xterm-256color' : 'dumb' };
+// Plain pipes: no terminal, so no isatty() and no job control, but every shell
+// and every client works. Also the fallback when the PTY helper dies at startup.
+function runWithPipes(channel, { command, pty, env }) {
+  const sh = shellArgs(command);
+  const runEnv = { ...env, TERM: pty ? pty.term || 'xterm-256color' : 'dumb' };
   if (!sh.cmd) {
     // No usable shell on this machine — say so plainly instead of a bare ENOENT.
     channel.stderr.write('mitticloud: no shell found to run this command\n');
@@ -321,7 +357,9 @@ function runChild(channel, { command = null, pty = null } = {}) {
     channel.end();
     return { resize() {} };
   }
-  const child = spawn(sh.cmd, sh.args, { cwd: VAULT_DIR, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = trackChild(
+    spawn(sh.cmd, sh.args, { cwd: shellCwd(), env: runEnv, stdio: ['pipe', 'pipe', 'pipe'] })
+  );
   let alive = true;
   const toClient = (buf) => {
     if (alive) channel.write(buf);
@@ -354,18 +392,42 @@ function runChild(channel, { command = null, pty = null } = {}) {
   return { resize() {} }; // no terminal to resize on the pipe path
 }
 
+// Some devices ship a PTY helper the kernel refuses to exec (linker warnings,
+// then an instant exit 1). Without a grace period that one bad binary kills
+// every interactive session, so a helper that dies this early having produced
+// nothing is treated as absent: its stderr is kept for diagnostics and the same
+// request restarts on pipes.
+const PTY_GRACE_MS = 1500;
+const PTY_ERR_LOG = path.join(SSH_DIR, 'pty-errors.log');
+
+/** Append one helper-failure report, keeping the log bounded. */
+function notePtyFailure(stderrChunks, err) {
+  const body = Buffer.concat(stderrChunks).toString('utf8').slice(0, 4000);
+  const line = `${new Date().toISOString()} helper died at startup${err ? ` (${err.message})` : ''}\n${body}\n---\n`;
+  try {
+    fs.mkdirSync(SSH_DIR, { recursive: true });
+    if (fs.existsSync(PTY_ERR_LOG) && fs.statSync(PTY_ERR_LOG).size > 131072) {
+      fs.writeFileSync(PTY_ERR_LOG, fs.readFileSync(PTY_ERR_LOG).subarray(-65536));
+    }
+    fs.appendFileSync(PTY_ERR_LOG, line);
+  } catch {
+    /* diagnostics must never break a session */
+  }
+}
+
 /**
  * Interactive shell over the PTY proxy. The helper runs the real shell on a PTY
  * and pipes bytes to us, so isatty() is true, line editing works, and the client
  * can resize. Resizes go to the helper on fd 3 as "R <rows> <cols>\n".
  */
 function runWithPty(channel, { helper, command, pty, env }) {
+  const handle = { resize() {} };
   const sh = resolveShell();
   if (!sh) {
     channel.stderr.write('mitticloud: no shell found to run this command\n');
     channel.exit(127);
     channel.end();
-    return { resize() {} };
+    return handle;
   }
   const rows0 = Number(pty.rows) > 0 ? Number(pty.rows) : 24;
   const cols0 = Number(pty.cols) > 0 ? Number(pty.cols) : 80;
@@ -377,26 +439,44 @@ function runWithPty(channel, { helper, command, pty, env }) {
   };
 
   // fd 3 is the resize control pipe the helper reads.
-  const child = spawn(helper, [sh, ...(command ? ['-c', command] : [])], {
-    cwd: VAULT_DIR,
-    env: runEnv,
-    stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
-  });
+  const child = trackChild(
+    spawn(helper, [sh, ...(command ? ['-c', command] : [])], {
+      cwd: shellCwd(),
+      env: runEnv,
+      stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+    })
+  );
   const ctl = child.stdio[3];
   let ctlOpen = Boolean(ctl);
   let alive = true;
+  let channelGone = false;
+  let produced = 0;
+  const startedAt = Date.now();
+  const stderrChunks = [];
 
   const toClient = (buf) => {
-    if (alive) channel.write(buf);
-  };
-  const toClientErr = (buf) => {
-    if (alive) channel.stderr.write(buf);
-  };
-  child.stdout.on('data', toClient);
-  child.stderr.on('data', toClientErr);
-  child.on('error', () => {
     if (!alive) return;
+    produced += buf.length;
+    channel.write(buf);
+  };
+  // The helper's own stderr carries only its diagnostics (linker warnings, exec
+  // failures) — the shell runs on the helper's PTY and arrives on stdout — so it
+  // is captured for the log instead of being shown to the client.
+  child.stdout.on('data', toClient);
+  child.stderr.on('data', (buf) => {
+    if (stderrChunks.length < 16) stderrChunks.push(buf);
+  });
+  const fellBack = (err) => {
     alive = false;
+    notePtyFailure(stderrChunks, err);
+    handle.resize = runWithPipes(channel, { command, pty, env }).resize;
+  };
+  const diedTooSoon = () => !channelGone && produced === 0 && Date.now() - startedAt < PTY_GRACE_MS;
+  child.on('error', (err) => {
+    if (!alive) return;
+    if (diedTooSoon()) return fellBack(err);
+    alive = false;
+    notePtyFailure(stderrChunks, err);
     channel.stderr.write('mitticloud: could not start the terminal helper\n');
     channel.exit(127);
     channel.end();
@@ -406,6 +486,7 @@ function runWithPty(channel, { helper, command, pty, env }) {
   });
   channel.on('end', () => child.stdin.end());
   channel.on('close', () => {
+    channelGone = true;
     alive = false;
     child.kill();
   });
@@ -419,23 +500,23 @@ function runWithPty(channel, { helper, command, pty, env }) {
       }
     }
     if (!alive) return;
+    if (diedTooSoon()) return fellBack(null);
     alive = false;
     channel.exit(code ?? 0);
     channel.end();
   });
 
-  return {
-    resize(rows, cols) {
-      if (!ctlOpen || !ctl) return;
-      const r = Number(rows) > 0 ? Math.floor(Number(rows)) : rows0;
-      const c = Number(cols) > 0 ? Math.floor(Number(cols)) : cols0;
-      try {
-        ctl.write(`R ${r} ${c}\n`);
-      } catch {
-        ctlOpen = false;
-      }
-    },
+  handle.resize = (rows, cols) => {
+    if (!ctlOpen || !ctl) return;
+    const r = Number(rows) > 0 ? Math.floor(Number(rows)) : rows0;
+    const c = Number(cols) > 0 ? Math.floor(Number(cols)) : cols0;
+    try {
+      ctl.write(`R ${r} ${c}\n`);
+    } catch {
+      ctlOpen = false;
+    }
   };
+  return handle;
 }
 
 /** Start the SSH server. Idempotent. Returns the current state. */
@@ -487,10 +568,19 @@ export function startSsh({ host = '127.0.0.1', port = sshPort() } = {}) {
 }
 
 export function stopSsh() {
-  if (!server) return;
-  server.close();
-  server = null;
-  state = { listening: false, port: null, host: null, error: null };
+  if (server) {
+    server.close();
+    server = null;
+    state = { listening: false, port: null, host: null, error: null };
+  }
+  for (const child of shellChildren) {
+    try {
+      child.kill();
+    } catch {
+      /* already gone */
+    }
+  }
+  shellChildren.clear();
 }
 
 export function sshState() {

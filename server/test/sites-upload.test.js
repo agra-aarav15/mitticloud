@@ -147,5 +147,9 @@ test('app folder upload lands in the app directory', async () => {
   );
   const list = await api('GET', '/api/apps');
   const rec = (list.json.apps || []).find((a) => a.name === 'upapp');
-  assert.equal(rec.fileCount, 2);
+  assert.equal(rec.fileCount, 2); // seeded package.json appears only after a start
+
+  // cleanup also proves the count returns to the registry's view
+  const del = await api('DELETE', '/api/apps/upapp');
+  assert.equal(del.status, 200);
 });

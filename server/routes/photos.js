@@ -5,6 +5,7 @@
 //   PATCH  /api/photos/:id/favorite    body { favorite: bool } (:id = url-encoded rel path)
 //   GET    /api/photos/archive         whole vault as photos.zip (cap 300 MB)
 //   DELETE /api/photos?path=           delete one photo (rel path under vault/photos)
+//   POST   /api/photos/delete          body { paths: [...] } — selective bulk delete
 // Uploaded files live at vault/photos/YYYY/MM/DD/<timestamp>-<random6>.<ext>
 // and are served statically at /photos/... (mounted in index.js).
 // The sha1 dedup index and per-photo favorites live in data/photos-meta.json,
@@ -112,6 +113,28 @@ function toShape(absPath, size, uploadedAt) {
     size,
     uploadedAt,
   };
+}
+
+/** Prune now-empty day/month/year dirs above a deleted photo, to keep the vault tidy. */
+async function pruneEmptyDirs(abs) {
+  const rootAbs = path.resolve(PHOTOS_DIR);
+  let parent = path.dirname(abs);
+  while (parent.startsWith(rootAbs + path.sep)) {
+    try {
+      await fsp.rmdir(parent); // only succeeds when empty
+    } catch {
+      break;
+    }
+    parent = path.dirname(parent);
+  }
+}
+
+/** Drop a deleted photo from the favorite and sha1 indexes. */
+function pruneMetaFor(meta, rel) {
+  delete meta.favorites[rel];
+  for (const sha of Object.keys(meta.bySha1)) {
+    if (meta.bySha1[sha] === rel) delete meta.bySha1[sha];
+  }
 }
 
 async function walk(dir, out) {
@@ -259,19 +282,55 @@ router.delete('/', async (req, res, next) => {
       throw new PathError(`Not a photo file: ${rel}`);
     }
     await fsp.unlink(abs);
-
-    // Prune now-empty day/month/year dirs to keep the vault tidy.
-    const rootAbs = path.resolve(PHOTOS_DIR);
-    let parent = path.dirname(abs);
-    while (parent.startsWith(rootAbs + path.sep)) {
-      try {
-        await fsp.rmdir(parent); // only succeeds when empty
-      } catch {
-        break;
-      }
-      parent = path.dirname(parent);
-    }
+    const meta = loadPhotosMeta();
+    pruneMetaFor(meta, rel);
+    savePhotosMeta(meta);
+    await pruneEmptyDirs(abs);
     res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Selective bulk delete: the grid's checkbox mode sends every picked path in one
+// request. Each path is validated on its own so one bad entry cannot fail the
+// whole batch; the ones that were already gone come back in `missing`.
+router.post('/delete', async (req, res, next) => {
+  try {
+    const paths = req.body && Array.isArray(req.body.paths) ? req.body.paths : null;
+    if (!paths || paths.length === 0) {
+      throw new PathError('Missing "paths" array of photo paths');
+    }
+    if (paths.length > MAX_PHOTOS) {
+      throw new PathError(`Too many paths at once (max ${MAX_PHOTOS})`);
+    }
+    const meta = loadPhotosMeta();
+    let deleted = 0;
+    const missing = [];
+    for (const rel of paths) {
+      if (typeof rel !== 'string' || !rel.trim()) {
+        missing.push(rel);
+        continue;
+      }
+      let abs;
+      try {
+        abs = resolveSafe(rel, PHOTOS_DIR);
+      } catch {
+        missing.push(rel);
+        continue;
+      }
+      const st = await fsp.lstat(abs).catch(() => null);
+      if (!st || !st.isFile()) {
+        missing.push(rel);
+        continue;
+      }
+      await fsp.unlink(abs);
+      pruneMetaFor(meta, rel);
+      await pruneEmptyDirs(abs);
+      deleted++;
+    }
+    savePhotosMeta(meta);
+    res.json({ ok: true, deleted, missing });
   } catch (err) {
     next(err);
   }

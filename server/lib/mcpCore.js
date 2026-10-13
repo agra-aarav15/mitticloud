@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { FILES_DIR, PHOTOS_DIR, DATA_DIR, resolveSafe, PathError } from './paths.js';
+import { FILES_DIR, PHOTOS_DIR, DATA_DIR, ROOT_DIR, resolveSafe, PathError } from './paths.js';
 import {
   listApps,
   startApp,
@@ -23,7 +23,15 @@ import {
 } from './apprunner.js';
 import { get as storeGet } from './store.js';
 
-const VERSION = '0.17.26';
+// Read from package.json so the reported version can never drift from the
+// release version — server_status must answer honestly.
+const VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8')).version;
+  } catch {
+    return 'unknown';
+  }
+})();
 const READ_CAP = 100 * 1024; // read_file returns at most 100 KB of text
 const WRITE_CAP = 200 * 1024; // same ceiling as the editor's save
 const CONTEXT_CAP = 20 * 1024; // memory_context returns at most 20 KB

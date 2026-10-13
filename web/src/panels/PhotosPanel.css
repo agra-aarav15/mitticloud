@@ -197,6 +197,59 @@
   font-size: 11.5px;
 }
 
+/* Selective deletion: bulk bar above the grid, checkbox on every tile */
+.ph-selectbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.ph-sel-count {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ph-selecting .ph-tile {
+  cursor: pointer;
+}
+.ph-tile.is-sel {
+  border-color: #fafafa;
+  box-shadow: 0 0 0 1px #fafafa;
+}
+.ph-sel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(10, 10, 10, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: transparent; /* empty box until picked; the check appears on select */
+  font-family: inherit;
+  cursor: pointer;
+}
+.ph-sel.is-sel {
+  background: #fafafa;
+  border-color: #fafafa;
+  color: #0a0a0a;
+}
+.ph-sel:focus-visible {
+  outline: 2px solid #fafafa;
+  outline-offset: 1px;
+}
+
 /* Skeleton tile */
 .ph-sk {
   aspect-ratio: 1 / 1;

@@ -129,9 +129,20 @@ const IS_MAIN =
   process.env.MITTICLOUD_EMBEDDED === '1' ||
   (!!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href);
 
+/** Version from package.json — the boot line must say the real release. */
+function mittiVersion() {
+  try {
+    return JSON.parse(
+      fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+    ).version;
+  } catch {
+    return 'unknown';
+  }
+}
+
 if (IS_MAIN) {
   const server = app.listen(PORT, () => {
-    console.log(`MittiCloud v0.17.26 running at http://localhost:${PORT}`);
+    console.log(`MittiCloud v${mittiVersion()} running at http://localhost:${PORT}`);
     for (const { iface, address } of getLanIPs()) {
       console.log(`  also on http://${address}:${PORT} (${iface})`);
     }

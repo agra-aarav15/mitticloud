@@ -670,6 +670,20 @@ export default function HostPanel() {
     }
   }
 
+  const saveRun = async (app, cmds) => {
+    setBusyName(app.name + ':run')
+    try {
+      await updateAppConfig(app.name, cmds)
+      toast('Run settings saved — restart the app to apply', 'ok')
+      setRestartHint((cur) => ({ ...cur, [app.name]: true }))
+      load(false)
+    } catch (err) {
+      toast(err.message || 'Could not save run settings', 'err')
+    } finally {
+      setBusyName(null)
+    }
+  }
+
   const saveEnv = async (app, env) => {
     setBusyName(app.name + ':env')
     try {
@@ -992,6 +1006,11 @@ export default function HostPanel() {
                     </span>
                     <span className="chip">{humanizeBytes(app.bytes)}</span>
                     {app.entry && <span className="chip">{app.entry}</span>}
+                    {!app.entry && app.startCommand && (
+                      <span className="chip" title="Custom start command">
+                        {app.startCommand}
+                      </span>
+                    )}
                   </div>
                   <div className="hs-card-actions">
                     {isRunning || isStarting ? (
@@ -1082,6 +1101,7 @@ export default function HostPanel() {
                     <Icon name="download" size={13} /> Export
                   </button>
                   <AppEnv app={app} busy={busyName === app.name + ':env'} onSave={saveEnv} />
+                  <AppRun app={app} busy={busyName === app.name + ':run'} onSave={saveRun} />
                 </div>
                 {restartHint && restartHint[app.name] && (
                   <div className="hs-restart-note muted">
@@ -1199,6 +1219,71 @@ function AppEnv({ app, busy, onSave }) {
               </button>
             </div>
             <span className="muted hs-env-note">Reach the app as process.env.NAME — restart to apply.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- per-app run settings: the commands that install and start it (any language) ---
+function AppRun({ app, busy, onSave }) {
+  const [open, setOpen] = useState(false)
+  const [startCmd, setStartCmd] = useState('')
+  const [installCmd, setInstallCmd] = useState('')
+  useEffect(() => {
+    if (open) {
+      setStartCmd(app.startCommand || '')
+      setInstallCmd(app.installCommand || '')
+    }
+  }, [open, app.startCommand, app.installCommand])
+  return (
+    <div className={'hs-env' + (open ? ' open' : '')}>
+      <button type="button" className="btn" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Icon name="code" size={13} /> Run
+      </button>
+      <div className={'xwrap' + (open ? ' open' : '')}>
+        <div>
+          <div className="hs-env-body">
+            <label className="hs-run-label" htmlFor={'run-start-' + app.name}>
+              Start command
+            </label>
+            <input
+              id={'run-start-' + app.name}
+              placeholder="python app.py · php -S 0.0.0.0:%PORT% · node server.js"
+              value={startCmd}
+              onChange={(e) => setStartCmd(e.target.value)}
+              spellCheck={false}
+              autoCapitalize="off"
+            />
+            <label className="hs-run-label" htmlFor={'run-install-' + app.name}>
+              Install command (optional)
+            </label>
+            <input
+              id={'run-install-' + app.name}
+              placeholder="pip install -r requirements.txt"
+              value={installCmd}
+              onChange={(e) => setInstallCmd(e.target.value)}
+              spellCheck={false}
+              autoCapitalize="off"
+            />
+            <div className="hs-env-actions">
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => {
+                  onSave(app, { startCommand: startCmd.trim(), installCommand: installCmd.trim() })
+                  setOpen(false)
+                }}
+              >
+                Save run settings
+              </button>
+            </div>
+            <span className="muted hs-env-note">
+              Runs in the app folder with PORT set — any language this device can execute. On
+              Windows use %PORT% inside the command; elsewhere $PORT. Leave both empty for the
+              automatic Node detection. Restart to apply.
+            </span>
           </div>
         </div>
       </div>

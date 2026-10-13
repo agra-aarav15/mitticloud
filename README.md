@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.17.26-orange)
+![Release](https://img.shields.io/badge/release-v0.18.0-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,13 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.18.0
+
+- **Pick photos, delete exactly those.** The Photos grid has a Select mode: checkboxes on every tile, Select all / Select none, and one Delete selected that removes exactly the picked photos in a single request. Already-gone files are reported, not errored. Deleting also cleans the photo's favorite and duplicate-index entries, which used to linger forever.
+- **Host any language, not just Node.** Every app card has a Run panel with two plain boxes: a start command and an optional install command. `python app.py`, `php -S 0.0.0.0:$PORT -t public`, a compiled Go binary — whatever the device can execute runs as a hosted app, with PORT handed to it and the same logs, restart, RAM guard and crash ladder as Node apps. Leave both empty and the automatic Node detection works exactly as before. On Windows write `%PORT%` inside the command.
+- **SSH survives a broken terminal helper.** On some devices the bundled PTY proxy (`libmittish.so`) cannot start — the session died with "Stream closed before handshake completed" and a linker warning. Now a helper that dies at startup having produced nothing is treated as absent: the same session restarts on plain pipes and still gives a working shell, and the helper's error is kept in `data/ssh/pty-errors.log` for diagnosis. Turning SSH off also ends every shell it started, instead of leaving them running.
+- **Hosted apps stop for real on Windows.** A shell-wrapped start (npm start, a custom command) leaves a cmd.exe wrapper whose real server grandchild survived a plain kill, holding the port forever. Stopping an app now takes the whole process tree down.
 
 ## What you get in v0.17.26
 
@@ -115,7 +122,7 @@ No database, no CDN. The dashboard is pre-built into `public/`, so the server ne
 
 ```bash
 npm install
-npm test          # 175 checks, including a real SSH client against the embedded server
+npm test          # 183 checks, including a real SSH client against the embedded server
 cd web && npm run build   # rebuilds public/ (commit the output)
 ```
 
