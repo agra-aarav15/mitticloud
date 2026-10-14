@@ -14,7 +14,7 @@ const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'mitticloud-sshshell-'));
 process.env.MITTICLOUD_VAULT_DIR = path.join(TMP_ROOT, 'vault');
 process.env.MITTICLOUD_DATA_DIR = path.join(TMP_ROOT, 'data');
 
-const { resolveShell, shellPath, redirectNodeInvocation, isEmbeddedAndroid, ptyHelper } =
+const { resolveShell, shellPath, redirectNodeInvocation, isEmbeddedAndroid, ptyHelper, NODE22_SHIM } =
   await import('../lib/sshserver.js');
 const { nodeRuntime } = await import('../lib/apprunner.js');
 
@@ -203,6 +203,77 @@ test('a normal node script the owner runs is NOT redirected', () => {
   const cmd = 'node index.js';
   assert.equal(redirectNodeInvocation(cmd), cmd);
 });
+// --- the node:sqlite stand-in for ZCode's Node 22 server ---
+
+test('zcode-server gets the node:sqlite shim so it can boot on the shipped Node 18', () => {
+  process.env.MITTICLOUD_EMBEDDED = '1';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mittinode-'));
+  const launcher = path.join(dir, 'libmittinode.so');
+  fs.writeFileSync(launcher, 'x');
+  process.env.MITTICLOUD_NATIVE_DIR = dir;
+  try {
+    const out = redirectNodeInvocation('node ~/.zcode/server/zcode-server.cjs --port 0');
+    assert.ok(out.startsWith(launcher + ' '), out);
+    assert.ok(out.includes('--require=' + NODE22_SHIM), 'shim flag injected: ' + out);
+    // the flag must sit before the script, or node treats it as an argument
+    assert.ok(
+      out.indexOf('--require=') < out.indexOf('zcode-server.cjs'),
+      'flag precedes the script: ' + out
+    );
+
+    // a quoted node path keeps its quoting and still gains the flag
+    const quoted = redirectNodeInvocation('"$HOME/.zcode/server/node" "$HOME/.zcode/server/zcode-server.cjs"');
+    assert.ok(quoted.includes('" --require='), quoted);
+
+    // re-running the rewrite must not stack a second flag
+    const once = redirectNodeInvocation('node ~/.zcode/server/zcode-server.cjs');
+    assert.equal(redirectNodeInvocation(once), once);
+  } finally {
+    delete process.env.MITTICLOUD_NATIVE_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Cursor/code-server are redirected but never given the zcode shim', () => {
+  process.env.MITTICLOUD_EMBEDDED = '1';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mittinode-'));
+  const launcher = path.join(dir, 'libmittinode.so');
+  fs.writeFileSync(launcher, 'x');
+  process.env.MITTICLOUD_NATIVE_DIR = dir;
+  try {
+    const cursor = redirectNodeInvocation('node ~/.cursor-server/bin/server-main.js --port 0');
+    assert.ok(cursor.startsWith(launcher + ' '), cursor);
+    assert.ok(!cursor.includes('mitti-node22-shim'), 'Cursor must not load the sqlite shim: ' + cursor);
+  } finally {
+    delete process.env.MITTICLOUD_NATIVE_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the shim file exists where the rewrite points and answers node:sqlite', () => {
+  // the rewrite points at this exact path; it must ship with the server
+  assert.equal(fs.existsSync(NODE22_SHIM), true, 'shim exists at ' + NODE22_SHIM);
+  const out = execFileSync(
+    process.execPath,
+    [
+      '-e',
+      `const s=require(${JSON.stringify(NODE22_SHIM)});process.stdout.write(typeof s.DatabaseSync+' '+typeof s.StatementSync)`,
+    ],
+    { encoding: 'utf8' }
+  );
+  assert.equal(out.trim(), 'function function');
+});
+
+test('a Node that already has node:sqlite is unaffected by the shim loader', () => {
+  // the flag must never break a host whose Node already ships node:sqlite
+  const out = execFileSync(
+    process.execPath,
+    ['--require=' + NODE22_SHIM, '-e', 'process.stdout.write(String(typeof require("node:sqlite").DatabaseSync))'],
+    { encoding: 'utf8' }
+  );
+  assert.equal(out.trim(), 'function');
+});
+
 // --- the PTY helper lookup (full interactive shell) ---
 
 test('ptyHelper: found only when the app shipped libmittish.so', () => {

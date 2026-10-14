@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.18.0-orange)
+![Release](https://img.shields.io/badge/release-v0.18.1-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,12 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.18.1
+
+- **ZCode's Remote connection actually gets through.** The real reason it failed with "Stream closed before handshake completed" was a Node version gap: ZCode 3.14.x ships its own **Node 22** runtime and its server calls `require("node:sqlite")` at load time. Android cannot run ZCode's glibc binary, so MittiCloud swaps in the Node it ships inside the APK — **Node 18** — where `node:sqlite` does not exist, so the server died instantly with exit 1. MittiCloud now loads a small `node:sqlite` stand-in (via `node --require`) only for `zcode-server.cjs`, so the server boots, completes its handshake and runs the session. Verified locally against ZCode's real 11.5 MB `zcode-server.cjs` build 3.14.5: the handshake completes (`client connected` → `stdio mode ready`).
+  - **Honest limit:** the stand-in is an in-memory store, not real SQLite. ZCode's SQLite-backed extras — the off-peak task queue and task/notes persistence — will not survive a restart, and the shim says so once on stderr. The session, file editing and the agent work normally.
+- **Cursor and code-server are untouched** by that change: only `zcode-server.cjs` gets the flag.
 
 ## What you get in v0.18.0
 
@@ -122,7 +128,7 @@ No database, no CDN. The dashboard is pre-built into `public/`, so the server ne
 
 ```bash
 npm install
-npm test          # 183 checks, including a real SSH client against the embedded server
+npm test          # 187 checks, including a real SSH client against the embedded server
 cd web && npm run build   # rebuilds public/ (commit the output)
 ```
 

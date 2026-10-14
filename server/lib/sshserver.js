@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import { DATA_DIR, VAULT_DIR, resolveSafe } from './paths.js';
 import { getToken, isLocked } from './auth.js';
@@ -262,6 +263,16 @@ export function shellPath() {
 // tree running server-main.js; VS Code-style servers run code-server.
 const REMOTE_SERVER_RE = /zcode-server\.cjs|cursor-server|\.cursor-server|server-main\.js|code-server/;
 
+// Only zcode-server needs the node:sqlite stand-in (it is the one that requires
+// the Node 22 builtin at load time). Cursor/code-server must NOT get the flag.
+const ZCODE_SERVER_RE = /zcode-server\.cjs/;
+
+// The shim that lets zcode-server's `require("node:sqlite")` resolve on the
+// Node 18 the APK ships (see lib/mitti-node22-shim.cjs for the full story).
+// Lives beside this module, so it travels into the APK with the rest of server/.
+export const NODE22_SHIM = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mitti-node22-shim.cjs');
+const SHIM_FLAG = `--require=${NODE22_SHIM}`;
+
 /**
  * Rewrite a client's command so it runs on THIS machine's node.
  *
@@ -272,6 +283,11 @@ const REMOTE_SERVER_RE = /zcode-server\.cjs|cursor-server|\.cursor-server|server
  * missing-loader error. MittiCloud already ships a real Android node, so when a
  * login asks to run that uploaded server, run ours instead. On a normal Linux
  * host the uploaded node is version-matched and is left untouched.
+ *
+ * ZCode's server is built for Node 22 and `require`s `node:sqlite`, which Node
+ * 18 lacks, so a stand-in is loaded via --require (zcode-server only, at the
+ * front of the command so it also reaches a shell-wrapped launch). The flag is
+ * added before the node token so node sees it regardless of the client's args.
  */
 export function redirectNodeInvocation(command) {
   if (!command || typeof command !== 'string') return command;
@@ -281,10 +297,16 @@ export function redirectNodeInvocation(command) {
   // Swap the node executable token: a bare `node`/`node.exe`, or any path that
   // ends in one. Separators may be / or \ and the token may be quoted; the
   // surrounding env assignments and quoting are preserved.
-  return command.replace(
+  const swapped = command.replace(
     /(^|[\s"'=])((?:[^\s"'=]*[/\\])?node(?:\.exe)?)(?=[\s"']|$)/g,
     (whole, pre, tok) => (/^(?:[^\s"'=]*[/\\])?node(?:\.exe)?$/.test(tok) ? `${pre}${exe}` : whole)
   );
+  if (!ZCODE_SERVER_RE.test(swapped) || swapped.includes('mitti-node22-shim')) return swapped;
+  // Insert the shim flag right after the node executable — quoted or bare — so
+  // `node --require=... server.cjs` and `env FOO=1 node --require=... x.cjs`
+  // both keep working. \1 back-references the optional surrounding quote pair.
+  const escaped = exe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return swapped.replace(new RegExp(`("?)${escaped}\\1(?=\\s|$)`, 'g'), `$& ${SHIM_FLAG}`);
 }
 
 // The program a login runs: the platform shell, with an optional one-off command.
