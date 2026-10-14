@@ -264,6 +264,65 @@ test('the shim file exists where the rewrite points and answers node:sqlite', ()
   assert.equal(out.trim(), 'function function');
 });
 
+// --- the ICU-less gap: ZCode's server uses \p{...} regexes and Intl, neither of
+// which exists on nodejs-mobile's Node 18. Both are only reachable when the shim
+// runs on a Node that has no ICU, which every dev machine here does — so the
+// shim honours MITTI_FORCE_NO_ICU to make that path testable anywhere.
+
+test('on a Node without ICU the shim rewrites \\p{...} so a regex LITERAL parses', () => {
+  // The exact failure from the phone: a file whose SOURCE contains /[\p{L}]/u
+  // cannot be parsed at all on an ICU-less Node — it dies before a line runs.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mitti-icu-'));
+  const script = path.join(dir, 'literal.js');
+  fs.writeFileSync(
+    script,
+    'const r = /[\\p{L}\\p{N}\\p{M}\\p{S}]/u;\n' +
+      // 'a' is a letter, '5' a digit, '+' a math symbol (category S) — all match;
+      // '!' is punctuation (P), which the class does NOT include.
+      'process.stdout.write(String(r.test("a")) + " " + String(r.test("5")) + " " + String(r.test("+")) + " " + String(r.test("!")));\n'
+  );
+  try {
+    // sanity: with ICU disabled the shim must make this file load and match
+    const out = execFileSync(process.execPath, ['--require=' + NODE22_SHIM, script], {
+      encoding: 'utf8',
+      env: { ...process.env, MITTI_FORCE_NO_ICU: '1' },
+    });
+    assert.equal(out.trim(), 'true true true false', out);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the shim answers Intl on a Node that has none, in local time', () => {
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--require=' + NODE22_SHIM,
+      '-e',
+      'const f=new Intl.DateTimeFormat("en-CA",{year:"numeric",month:"2-digit",day:"2-digit"});' +
+        'const p=f.formatToParts(new Date(2026,9,14));' +
+        'process.stdout.write(p.map(x=>x.type+"="+x.value).join(","))',
+    ],
+    { encoding: 'utf8', env: { ...process.env, MITTI_FORCE_NO_ICU: '1' } }
+  );
+  assert.equal(out.trim(), 'year=2026,month=10,day=14');
+});
+
+test('on a full-ICU host the shim leaves regexes and Intl untouched', () => {
+  // The substitutions are an approximation, so they must never run where the real
+  // Unicode tables exist. With ICU present the shim reports so and changes nothing.
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--require=' + NODE22_SHIM,
+      '-e',
+      'process.stdout.write(String(new Intl.DateTimeFormat("en-CA",{timeZone:"UTC"}).resolvedOptions().timeZone != null))',
+    ],
+    { encoding: 'utf8', env: { ...process.env, MITTI_FORCE_NO_ICU: '' } }
+  );
+  assert.equal(out.trim(), 'true');
+});
+
 test('a Node that already has node:sqlite is unaffected by the shim loader', () => {
   // the flag must never break a host whose Node already ships node:sqlite
   const out = execFileSync(

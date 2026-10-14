@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.18.1-orange)
+![Release](https://img.shields.io/badge/release-v0.18.2-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,15 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.18.2
+
+- **ZCode Remote really connects now — the phone's Node was missing three things, and v0.18.1 fixed only one.** v0.18.1 loaded a stand-in for `require("node:sqlite")`, which got rid of the first crash — but the session still died with "Stream closed before handshake completed" because ZCode's server needs two more capabilities that nodejs-mobile's **Node 18 is built without**:
+  - **Unicode `\p{...}` regexes.** ZCode's server source contains a regex *literal* using `\p{L}\p{N}\p{M}\p{S}`. V8 can only compile those with ICU, and this Node has none, so the file failed at **parse time** — before a single line ran. No runtime stand-in can help a file that will not parse, so the shim now rewrites the source the moment before V8 compiles it, swapping each property escape for an equivalent character range.
+  - **`Intl`.** The ICU-less build has no `Intl` at all, yet the server formats locale/timezone headers and day ranges with it. The shim installs a small `DateTimeFormat` that formats in the device's own local time.
+  - Both substitutions run **only** on a Node without ICU (a normal Linux/Windows Node compiles `\p{...}` and has `Intl`, so it is left completely untouched), and each says so once on stderr.
+  - **Proven on the physical phone** (OnePlus 6T, in.mitticloud.app): with the shim, ZCode's real 12 MB `zcode-server.cjs` (build 3.15.3) starts, prints `zcode-hello`, completes the handshake (`client connected` → `stdio mode ready`) and stays alive. Without it, the same run exited 1 in three seconds.
+  - **Honest limits:** the Unicode ranges are explicit approximations of the Unicode classes, not the tables themselves; the `Intl` stand-in formats in the phone's local time and cannot resolve an arbitrary IANA zone; and the `node:sqlite` stand-in is in-memory, so ZCode's SQLite-backed task queue and automation history do not survive a restart. The session, file editing and the agent work normally.
 
 ## What you get in v0.18.1
 
@@ -98,7 +107,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 - **Hosted apps run through a bundled launcher.** Android (API 29+) refuses to execute a file an app can write, so the runner cannot start a script from app storage. The APK ships `libmittinode.so` — a real executable, packaged as a native library so Android extracts it into the executable folder — which loads `libnode.so` and calls `node::Start`. Node runs as the app's own user, with no extra privileges.
 - **Cloudflare Pages hosts static files only.** A running server needs the tunnel for a public link.
 - **Next.js builds run on the device.** They can be slow, and they can fail on a phone with little RAM. A failed build says which step failed.
-- **ZCode and Cursor run through the app's SSH door.** They upload their own Linux `node` and server, which Android cannot execute; MittiCloud detects that launch and runs their server with the phone's own Node instead. It has not been verified end to end on a phone yet — report what happens. Plain SSH and SFTP clients work as-is, and on a VPS nothing changes.
+- **ZCode and Cursor run through the app's SSH door.** They upload their own Linux `node` and server, which Android cannot execute; MittiCloud detects that launch and runs their server with the phone's own Node instead. Because that Node 18 is built without ICU, MittiCloud also supplies a `node:sqlite` stand-in, a `\p{...}` regex rewrite and a local-time `Intl` — verified on a real phone with ZCode 3.15.3 (see v0.18.2). Those stand-ins are approximations (see that section); plain SSH and SFTP clients work as-is, and on a VPS nothing changes.
 - **SSH is off by default**, uses port 8022 on a phone (Android blocks port 22 without root), and listens on the Wi-Fi only while it is turned on.
 
 ## Architecture
