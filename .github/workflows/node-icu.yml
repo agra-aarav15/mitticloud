@@ -1,0 +1,201 @@
+name: Build ICU Node for Android
+
+# Builds libnode.so WITH ICU (small-icu) for Android, and publishes the result
+# as a release asset the APK workflow can fetch.
+#
+# WHY THIS EXISTS
+# MittiCloud embeds nodejs-mobile's prebuilt libnode.so to run its own server on
+# the phone. That prebuilt is built with `--with-intl=none` — no ICU at all. The
+# consequences are not cosmetic:
+#
+#   * `\p{L}`-style regex literals refuse to COMPILE (V8 needs ICU for them), so
+#     a client bundle containing one dies at parse time.
+#   * `Intl` does not exist.
+#   * `--with-intl=none` also means `v8_enable_i18n_support=0`, and that build
+#     SIGSEGVs at runtime on bundles that expect ICU (measured on the phone:
+#     exit 139, zero output, on a real 15 MB agent bundle; the same bundle runs
+#     cleanly on desktop Node 18 with the same V8 major and ICU enabled).
+#
+# So this workflow re-runs nodejs-mobile's OWN build with a single flag changed:
+#   --with-intl=none  ->  --with-intl=small-icu
+#
+# small-icu statically links the ICU libraries and ships a trimmed data set. Per
+# Node's own ICU feature matrix that is "full" support for RegExp Unicode
+# property escapes and English-locale Intl — which is exactly what is missing.
+#
+# Runs on a tag (v*) or by hand. The artifact/lib is what the APK workflow wants.
+
+on:
+  push:
+    tags:
+      - 'node-icu-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # The nodejs-mobile tree we rebuild. Same version the app already ships, so the
+  # only change is the ICU flag — a deliberate, reviewable one-line delta.
+  NODEJS_MOBILE_TAG: v18.20.4
+  # Android API level used for the compile (the app's minSdk is 24).
+  ANDROID_API: '24'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            arch: arm64
+          - abi: armeabi-v7a
+            arch: arm
+          - abi: x86_64
+            arch: x86_64
+    steps:
+      - name: Check out MittiCloud
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          # gcc/g++ + multilib are needed for Node's HOST tools (node_js2c etc.);
+          # the host build is 64-bit but 32-bit host objects get built too.
+          sudo apt-get install -y build-essential gcc-multilib g++-multilib python3 unzip curl
+
+      - name: Set up the Android NDK (r24 — the version nodejs-mobile documents)
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r24
+          add-to-path: false
+
+      - name: Show the toolchain we actually got
+        run: |
+          echo "NDK at ${{ steps.setup-ndk.outputs.ndk-path }}"
+          ls "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/"
+
+      - name: Clone the nodejs-mobile tree at the exact tag
+        run: |
+          git clone --depth 1 --branch "$NODEJS_MOBILE_TAG" \
+            https://github.com/nodejs-mobile/nodejs-mobile.git "$RUNNER_TEMP/nodejs-mobile"
+
+      - name: Change ONE flag — --with-intl=none becomes small-icu
+        run: |
+          cd "$RUNNER_TEMP/nodejs-mobile"
+          f=android_configure.py
+          grep -q -- '--with-intl=none' "$f" || { echo "expected --with-intl=none in $f"; exit 1; }
+          sed -i 's/--with-intl=none/--with-intl=small-icu/' "$f"
+          echo "--- the configure line after patching ---"
+          grep -n 'with-intl' "$f"
+          # It must say small-icu now, or the build is pointless.
+          grep -q -- '--with-intl=small-icu' "$f" || { echo "patch did not apply"; exit 1; }
+
+      - name: Build libnode.so for ${{ matrix.abi }}
+        env:
+          NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          cd "$RUNNER_TEMP/nodejs-mobile"
+          # One ABI per job: icutrim.py has known multi-arch failures when the
+          # tree is reused across targets, and Node's build is not reentrant.
+          # No extra flags beyond the upstream script + the ICU change: keeping
+          # the delta to one line is the whole point of this workflow.
+          ./tools/android_build.sh "$NDK" "$ANDROID_API" "${{ matrix.arch }}"
+
+      - name: Verify the output before trusting it
+        run: |
+          cd "$RUNNER_TEMP/nodejs-mobile"
+          so="out_android/${{ matrix.abi }}/libnode.so"
+          test -f "$so" || { echo "no libnode.so at $so"; find out_android -type f | head; exit 1; }
+          ls -la "$so"
+          echo "--- size (bytes) ---"; stat -c %s "$so"
+          echo "--- is node::Start exported? ---"
+          readelf -sW "$so" | grep -c '_ZN4node5StartEiPPc' || { echo "node::Start NOT exported"; exit 1; }
+          echo "--- statically linked ICU? (these must be UNDEFINED or absent, not bundled deps) ---"
+          readelf -dW "$so" | grep -i -E 'NEEDED|icu' || true
+          echo "--- SONAME ---"
+          readelf -dW "$so" | grep -i soname || true
+
+      - name: Prove ICU is really in there (host-side symbol check)
+        run: |
+          cd "$RUNNER_TEMP/nodejs-mobile"
+          so="out_android/${{ matrix.abi }}/libnode.so"
+          # An ICU-enabled build links the ICU data + symbols in. Look for the
+          # telltale ICU symbols. If these are absent the flag did not take.
+          if readelf -sW "$so" | grep -qiE 'u_strToLower|icu_7[0-9]::|U_ICU_VERSION'; then
+            echo "ICU symbols present — good."
+          else
+            echo "No ICU symbols found in libnode.so — the small-icu build did NOT take effect."
+            echo "First 40 symbols for inspection:"
+            readelf -sW "$so" | head -40
+            exit 1
+          fi
+          echo "--- confirm the binary does not need an external libicu to load ---"
+          readelf -dW "$so" | grep -i 'NEEDED' || true
+
+      - name: Upload this ABI's libnode.so
+        uses: actions/upload-artifact@v4
+        with:
+          name: libnode-icu-${{ matrix.abi }}
+          path: ${{ runner.temp }}/nodejs-mobile/out_android/${{ matrix.abi }}/libnode.so
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download every ABI
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/libs
+
+      - name: Lay the files out as bin/<abi>/libnode.so
+        run: |
+          cd "$RUNNER_TEMP/libs"
+          ls -la
+          mkdir -p out
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            mkdir -p "out/bin/$abi"
+            cp "libnode-icu-$abi/libnode.so" "out/bin/$abi/libnode.so"
+          done
+          echo "--- final layout ---"
+          find out -type f -exec ls -la {} \;
+
+      - name: Name the release after the run
+        id: name
+        run: |
+          # Deterministic, readable tag: nodejs-mobile version + the ICU mode.
+          # NOTE the deliberate "libnode-" prefix: the push trigger for this
+          # workflow matches "node-icu-v*", and creating a release creates its
+          # tag — so a tag that matched the trigger would re-run this workflow
+          # forever. This name cannot match.
+          echo "tag=libnode-icu-18.20.4-smallicu" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the libs as a release asset
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.name.outputs.tag }}"
+          # Create the release if it is not there yet, then (re)attach the asset.
+          if ! gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --repo "${{ github.repository }}" \
+              --title "Node 18.20.4 with ICU (small-icu) for Android" \
+              --notes "libnode.so rebuilt from nodejs-mobile $NODEJS_MOBILE_TAG with --with-intl=small-icu instead of --with-intl=none. This is what gives the phone real RegExp Unicode property escapes, real Intl, and a V8 built with i18n support. Consumed by .github/workflows/apk.yml."
+          fi
+          cd "$RUNNER_TEMP/libs/out"
+          zip -q -r "libnode-icu-${NODEJS_MOBILE_TAG}.zip" bin
+          ls -la "libnode-icu-${NODEJS_MOBILE_TAG}.zip"
+          gh release upload "$tag" "libnode-icu-${NODEJS_MOBILE_TAG}.zip" \
+            --repo "${{ github.repository }}" --clobber
+          echo "published: $tag / libnode-icu-${NODEJS_MOBILE_TAG}.zip"
+
+      - name: Keep the merged artifact too
+        uses: actions/upload-artifact@v4
+        with:
+          name: libnode-icu-all-abis
+          path: ${{ runner.temp }}/libs/out
+          if-no-files-found: error
