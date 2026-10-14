@@ -114,48 +114,30 @@ Module._load = function patchedLoad(request, parent, isMain) {
 // ---------------------------------------------------------------------------
 //
 // Only a Node with no ICU needs this: a full-ICU Node compiles \p{...} itself,
-// and rewriting it there would silently swap a precise Unicode class for an
-// approximation. So the whole section is skipped on a normal host.
+// and rewriting it there would swap its precise tables for ours. The whole
+// section is skipped on a normal host.
+//
+// The tables are GENERATED (tools/gen-unicode-tables.cjs) by dumping every code
+// point from a full-ICU Node, so they are exact rather than approximate. They
+// cover every property the client's servers and agents actually use — the
+// server needs \p{L}\p{N}\p{M}\p{S}; the agent bundle also uses \p{P}, \p{Pd},
+// \p{White_Space}, \p{Script=Han} and the three emoji classes.
 
 const BACKSLASH = '\\';
 
-// Property name -> an explicit class body. `u`-flag form uses \u{...} code
-// points; the non-`u` form uses surrogate pairs (a `u`-mode regex matches code
-// points, so a lone surrogate there would be wrong).
-const PROPS_U = {
-  L: 'A-Za-z\\u00AA\\u00B5\\u00BA\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02C1\\u0370-\\u0374\\u0376\\u0377\\u037A-\\u037D\\u037F\\u0386\\u0388-\\u03FF\\u0400-\\u04FF\\u0500-\\u052F\\u0531-\\u0556\\u0561-\\u0587\\u05D0-\\u05EA\\u0620-\\u064A\\u066E\\u066F\\u0671-\\u06D3\\u06FA-\\u06FC\\u0710-\\u072F\\u0904-\\u0939\\u0958-\\u0961\\u0971-\\u0980\\u0985-\\u098C\\u098F\\u0990\\u0993-\\u09A8\\u0A05-\\u0A0A\\u0A72-\\u0A74\\u0E01-\\u0E30\\u10A0-\\u10C5\\u1E00-\\u1F15\\u3041-\\u3096\\u30A1-\\u30FA\\u3105-\\u312F\\u4E00-\\u9FFF\\uA000-\\uA48C\\uAC00-\\uD7A3\\uF900-\\uFA6D\\uFB00-\\uFB06\\uFF21-\\uFF3A\\uFF41-\\uFF5A',
-  N: '0-9\\u0660-\\u0669\\u06F0-\\u06F9\\u07C0-\\u07C9\\u0966-\\u096F\\u09E6-\\u09EF\\u0A66-\\u0A6F\\u0AE6-\\u0AEF\\u0B66-\\u0B6F\\u0BE6-\\u0BEF\\u0C66-\\u0C6F\\u0CE6-\\u0CEF\\u0D66-\\u0D6F\\u0E50-\\u0E59\\u0ED0-\\u0ED9\\u0F20-\\u0F29\\u1040-\\u1049\\u17E0-\\u17E9\\u1810-\\u1819\\u1946-\\u194F\\uFF10-\\uFF19',
-  M: '\\u0300-\\u036F\\u0483-\\u0489\\u0591-\\u05BD\\u05BF\\u05C1\\u05C2\\u05C4\\u05C5\\u05C7\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06DC\\u06DF-\\u06E4\\u06E7\\u06E8\\u06EA-\\u06ED\\u0711\\u0730-\\u074A\\u07A6-\\u07B0\\u07EB-\\u07F3\\u0816-\\u0819\\u081B-\\u0823\\u0825-\\u0827\\u0829-\\u082D\\u0859-\\u085B\\u08E3-\\u0903\\u093A\\u093C\\u0941-\\u0948\\u094D\\u0951-\\u0957\\u0962\\u0963',
-  S: '\\u0024\\u002B\\u003C-\\u003E\\u005E\\u0060\\u007C\\u007E\\u00A2-\\u00A6\\u00A8\\u00A9\\u00AC\\u00AE-\\u00B1\\u00B4\\u00B6\\u00B8\\u00D7\\u00F7\\u02C2-\\u02C5\\u02D2-\\u02DF\\u02E5-\\u02EB\\u02ED\\u02EF-\\u02FF\\u0375\\u0384\\u0385\\u03F6\\u0482\\u058D-\\u058F\\u0606-\\u0608\\u060B\\u060E\\u060F\\u06DE\\u06E9\\u06FD\\u06FE\\u07F6\\u07FE\\u07FF\\u09F2\\u09F3\\u09FA\\u09FB\\u0AF1\\u0B70\\u0BF3-\\u0BFA',
-  // Emoji classes are supplementary-plane; \u{...} is required (and only valid
-  // with the `u` flag, which every emoji regex here sets).
-  Extended_Pictographic: '\\u{1F000}-\\u{1F0FF}\\u{1F10D}-\\u{1F10F}\\u{1F12F}\\u{1F16C}-\\u{1F171}\\u{1F17E}\\u{1F17F}\\u{1F18E}\\u{1F191}-\\u{1F19A}\\u{1F1AD}-\\u{1F1E5}\\u{1F201}-\\u{1F20F}\\u{1F21A}\\u{1F22F}\\u{1F232}-\\u{1F23A}\\u{1F23C}-\\u{1F23F}\\u{1F249}-\\u{1F3FA}\\u{1F400}-\\u{1F53D}\\u{1F546}-\\u{1F64F}\\u{1F680}-\\u{1F6FF}\\u{1F774}-\\u{1F77F}\\u{1F7D5}-\\u{1F7FF}\\u{1F80C}-\\u{1F80F}\\u{1F848}-\\u{1F84F}\\u{1F85A}-\\u{1F85F}\\u{1F888}-\\u{1F88F}\\u{1F8AE}-\\u{1F8FF}\\u{1F90C}-\\u{1F93A}\\u{1F93C}-\\u{1F945}\\u{1F947}-\\u{1F9FF}\\u{1FA70}-\\u{1FAFF}\\u{1FC00}-\\u{1FFFD}\\u{2600}-\\u{27BF}\\u{2B00}-\\u{2BFF}\\u{1F1E6}-\\u{1F1FF}',
-  Regional_Indicator: '\\u{1F1E6}-\\u{1F1FF}',
-  Emoji_Component: '\\u{200D}\\u{FE0F}\\u{1F3FB}-\\u{1F3FF}\\u{1F1E6}-\\u{1F1FF}0-9#*',
-};
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const TABLES = require('./mitti-unicode-tables.cjs');
+// { name: { u: '<class body for a /u regex>', n: '<surrogate form>' } }
+const PROPS_U = {};
+const PROPS_NO_U = {};
+for (const [name, forms] of Object.entries(TABLES)) {
+  PROPS_U[name] = forms.u;
+  PROPS_NO_U[name] = forms.n;
+}
 
-// Surrogate-pair fallbacks for the emoji classes, used only if an emoji
-// property ever appears in a regex WITHOUT the `u` flag (none do today).
-const PROPS_NO_U = {
-  L: PROPS_U.L,
-  N: PROPS_U.N,
-  M: PROPS_U.M,
-  S: PROPS_U.S,
-  Extended_Pictographic: PROPS_U.Extended_Pictographic.replace(/\\u\{([0-9A-Fa-f]+)\}-\\u\{([0-9A-Fa-f]+)\}/g, (m, a, b) => pairRange(a, b)).replace(/\\u\{([0-9A-Fa-f]+)\}/g, (m, a) => pairRange(a, a)),
-  Regional_Indicator: pairRange('1F1E6', '1F1FF'),
-  Emoji_Component: PROPS_U.Emoji_Component.replace(/\\u\{([0-9A-Fa-f]+)\}-\\u\{([0-9A-Fa-f]+)\}/g, (m, a, b) => pairRange(a, b)).replace(/\\u\{([0-9A-Fa-f]+)\}/g, (m, a) => pairRange(a, a)),
-};
-
-function pairRange(fromHex, toHex) {
-  const split = (hex) => {
-    const cp = parseInt(hex, 16) - 0x10000;
-    return { hi: (0xd800 + (cp >> 10)).toString(16), lo: (0xdc00 + (cp & 0x3ff)).toString(16) };
-  };
-  const a = split(fromHex);
-  const b = split(toHex);
-  if (fromHex === toHex) return `\\u${a.hi}\\u${a.lo}`;
-  if (a.hi === b.hi) return `\\u${a.hi}[\\u${a.lo}-\\u${b.lo}]`;
-  return `(?:\\u${a.hi}[\\u${a.lo}-\\uDFFF]|[\\u${(parseInt(a.hi, 16) + 1).toString(16)}-\\u${(parseInt(b.hi, 16) - 1).toString(16)}][\\uDC00-\\uDFFF]|\\u${b.hi}[\\uDC00-\\u${b.lo}])`;
+/** Does the shim have a table for this property name? */
+function hasProperty(name) {
+  return Object.prototype.hasOwnProperty.call(PROPS_U, name);
 }
 
 function hasIcu() {
@@ -171,14 +153,24 @@ function rewriteProperties(source, table) {
   // form — untouched; only the single-backslash regex-source form is a hazard.
   // One global replace over a 12 MB file is fast; a per-character loop is O(n^2).
   let changed = false;
+  const unknown = [];
   const out = source.replace(/(?<!\\)\\([pP])\{([A-Za-z_=]+)\}/g, (whole, kind, name) => {
     const body = table[name];
-    if (!body) return whole;
+    if (!body) {
+      // Not in the tables: leaving it means the regex still throws at compile
+      // time. Record it so the failure is visible instead of silent.
+      if (!unknown.includes(name)) unknown.push(name);
+      return whole;
+    }
     changed = true;
     return kind === 'p' ? body : '^' + body;
   });
   if (changed) {
-    warnOnce('Unicode \\p{...} ranges', 'approximated, because this device\'s Node ' + process.versions.node + ' is built without ICU');
+    warnOnce('Unicode \\p{...}', 'substituted exact ranges, because this device\'s Node ' + process.versions.node + ' is built without ICU');
+  }
+  if (unknown.length) {
+    // A property with no table would still crash the client's file. Say so.
+    warnOnce('Unicode \\p{...} not covered', 'no range table for: ' + unknown.join(', ') + ' — a regex using it may still fail on this Node');
   }
   return out;
 }
