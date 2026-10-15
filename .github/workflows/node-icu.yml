@@ -109,8 +109,11 @@ jobs:
           # GYP_DEFINES wholesale (os.environ['GYP_DEFINES'] = GYP_DEFINES), so
           # anything exported before android_build.sh is discarded.
           f="$RUNNER_TEMP/nodejs-mobile/android_configure.py"
+          # grep -F, NOT plain grep: the anchor contains [ ] which plain grep
+          # reads as a character class — that exact bug failed this step once
+          # already (exit 1 "anchor not found" on a file that contains it).
           anchor="os.environ['GYP_DEFINES'] = GYP_DEFINES"
-          grep -q "$anchor" "$f" || { echo "anchor line not found in $f"; exit 1; }
+          grep -qF "$anchor" "$f" || { echo "anchor line not found in $f"; exit 1; }
           sed -i "s|$anchor|$anchor; os.environ['GYP_DEFINES'] += ' host_arch=x64'|" "$f"
           echo "--- patched lines ---"
           grep -n "host_arch" "$f"
