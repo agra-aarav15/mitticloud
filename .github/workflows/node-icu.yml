@@ -27,10 +27,14 @@ name: Build Node 22 for Android
 # TWO DELIBERATE PATCHES TO THAT TREE
 #   1. --with-intl=none -> small-icu   (same reason as always: Unicode escapes
 #      and Intl do not exist without ICU)
-#   2. WebAssembly re-enabled. PR #150 sets v8_enable_webassembly = 0 for every
-#      build to cut size. The client bundle references WebAssembly 18 times and
-#      Node's own default is on, so shipping it disabled risks a new failure
-#      class for no proven benefit. We restore the upstream expression.
+#   2. nothing else. I first also tried re-enabling WebAssembly, on the theory
+#      that the client bundle mentions it. That FAILED, and the log said why:
+#      deps/v8/src/handles/handles.h:147 "static assertion failed: This handle
+#      does not reference a heap object", raised while compiling exactly the
+#      wasm files (wasm-to-js-tq-csa.cc, js-to-wasm-tq-csa.cc) and
+#      setup-isolate-full.o. PR #150 turns WebAssembly off because this V8 tree
+#      does not compile with it on; that is an upstream decision, not a size
+#      trim to be second-guessed. So we keep the tree as its author left it.
 
 on:
   push:
@@ -99,29 +103,7 @@ jobs:
           grep -n 'with-intl' "$f"
           grep -qF -- '--with-intl=small-icu' "$f" || { echo "ICU patch did not apply"; exit 1; }
 
-      - name: Patch 2 — re-enable WebAssembly (PR #150 disables it for all builds)
-        run: |
-          cd "$RUNNER_TEMP/nodejs-mobile"
-          f=configure.py
-          grep -n 'v8_enable_webassembly' "$f" | head -5
-          # Make the change idempotent and explicit: whatever the exact current
-          # expression is, replace the whole assignment with Node's own default.
-          python3 - "$f" <<'PYEOF'
-          import re, sys
-          path = sys.argv[1]
-          src = open(path, encoding='utf-8').read()
-          pat = re.compile(r"o\['variables'\]\['v8_enable_webassembly'\]\s*=\s*[^\n]+")
-          m = pat.search(src)
-          if not m:
-            sys.exit('v8_enable_webassembly assignment not found in configure.py')
-          print('was:', m.group(0).strip())
-          src = pat.sub("o['variables']['v8_enable_webassembly'] = 0 if options.v8_lite_mode else 1", src, count=1)
-          open(path, 'w', encoding='utf-8').write(src)
-          print('now:', "o['variables']['v8_enable_webassembly'] = 0 if options.v8_lite_mode else 1")
-          PYEOF
-          grep -n 'v8_enable_webassembly' "$f" | head -3
-
-      - name: Patch 3 — for the 32-bit target, stop gyp linking host tools as i386
+      - name: Patch 2 — for the 32-bit target, stop gyp linking host tools as i386
         if: matrix.arch == 'arm'
         run: |
           # Measured on the Node 18 run: the arm job logged
@@ -201,8 +183,17 @@ jobs:
             if strings -a "$so" | grep -qF "$token"; then echo "found $token"; else echo "FAIL: $token not present"; fail=1; fi
           done
 
-          echo "--- 5. WebAssembly present (we re-enabled it) ---"
-          strings -a "$so" | grep -qiE 'WebAssembly' || { echo "WARN: no WebAssembly string found"; }
+          echo "--- 5. WebAssembly ---"
+          # PR #150 builds this tree with v8_enable_webassembly=0 and that is
+          # fine: measured on desktop Node 22, the client bundle emits identical
+          # protocol output (1644 bytes) with WebAssembly unavailable, because
+          # it only reaches for wasm lazily (the date-time-format-timezone
+          # polyfill, which real ICU makes unnecessary). Reported, not required.
+          if strings -a "$so" | grep -qiE 'WebAssembly'; then
+            echo "note: WebAssembly strings present"
+          else
+            echo "note: no WebAssembly strings (expected for this tree)"
+          fi
 
           echo "--- runtime deps ---"
           readelf -dW "$so" | grep -i NEEDED || true
