@@ -365,4 +365,79 @@ if (process.env.MITTI_FORCE_NO_ICU === '1' || typeof globalThis.Intl === 'undefi
   };
 }
 
+// ---------------------------------------------------------------------------
+// 4. Run the heavy client bundle on a WORKER thread, not the main thread
+// ---------------------------------------------------------------------------
+//
+// Measured on arm64 Android (OnePlus 6T, Android 11) with the real ZCode client
+// bundle (~15 MB glm/zcode.cjs):
+//
+//   main thread          -> SIGSEGV, exit 139, zero output, every run
+//   worker thread 4 MB   -> clean exit, reaches its own config loading
+//   worker thread 8/16/64MB -> clean exit, same
+//   --stack-size, ulimit -s -> no effect on the main-thread crash
+//
+// Desktop x86-64 does not crash at all, and on desktop Node 18 + this shim the
+// bundle produces byte-identical output to native Node 22 — so the code and the
+// shim are right, and the fault is specific to how the main thread is set up on
+// this platform. Running the bundle on a worker thread avoids it.
+//
+// Scope is deliberately narrow: only a spawn/exec of a script whose path looks
+// like the ZCode client bundle, only on Android, and only when the wrapper is
+// actually present. Anything else is left completely alone.
+const WRAPPER = (() => {
+  try {
+    const p = require('node:path').join(__dirname, 'mitti-agent-wrapper.cjs');
+    return require('node:fs').existsSync(p) ? p : null;
+  } catch {
+    return null;
+  }
+})();
+
+// Match the ZCode AGENT bundle by name, tolerating a suffix like
+// "zcode-agent.cjs" as well as the shipped "zcode.cjs".
+//
+// It must NOT match "zcode-server.cjs": that is the long-lived server process,
+// and wrapping the server in a worker would break the whole connection. Only
+// the agent, which the server spawns per session, is rerouted.
+const BUNDLE_RE = /(^|[/\\])zcode(?:[-_.](?!server\b)[^/\\]*)?\.cjs$/;
+
+function isAndroidArm() {
+  // nodejs-mobile reports process.platform === 'android' on the phone. The env
+  // var is a fallback for a build that reports 'linux' instead.
+  return process.platform === 'android' || process.env.MITTICLOUD_PLATFORM === 'android';
+}
+
+if (WRAPPER && isAndroidArm()) {
+  const childProcess = require('node:child_process');
+
+  // Given a spawn's (command, args), decide whether it launches the client
+  // bundle, and if so hand back the launch rewritten to go through the wrapper.
+  function redirect(args) {
+    if (!Array.isArray(args)) return null;
+    const idx = args.findIndex((a) => typeof a === 'string' && BUNDLE_RE.test(a));
+    if (idx < 0) return null;
+    // Insert the wrapper immediately before the bundle path, keeping every flag
+    // (notably --require for this shim) ahead of it.
+    return args.slice(0, idx).concat([WRAPPER], args.slice(idx));
+  }
+
+  for (const name of ['spawn', 'execFile', 'fork', 'execFileSync']) {
+    const original = childProcess[name];
+    if (typeof original !== 'function') continue;
+    childProcess[name] = function patched(...callArgs) {
+      const args = callArgs[1];
+      const newArgs = redirect(args);
+      if (newArgs) {
+        warnOnce(
+          'client bundle on a worker thread',
+          'the agent runs on a worker, because on this platform it faults on the main thread'
+        );
+        return original.call(this, callArgs[0], newArgs, ...callArgs.slice(2));
+      }
+      return original.apply(this, callArgs);
+    };
+  }
+}
+
 module.exports = sqlite;

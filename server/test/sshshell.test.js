@@ -337,6 +337,49 @@ test('node:sea reports the truth for a non-SEA process instead of throwing', () 
   assert.equal(out.trim(), 'ERR_NOT_IN_SEA');
 });
 
+test('the worker reroute targets the agent bundle and never the server', () => {
+  // The shim redirects a spawn of the agent bundle onto a worker thread, because
+  // the bundle faults on the main thread on Android. It must NOT touch
+  // zcode-server.cjs: that is the long-lived server, and wrapping it in a worker
+  // would break the connection outright. Read the pattern straight from the shim
+  // so this test cannot drift from the code it guards.
+  const src = fs.readFileSync(NODE22_SHIM, 'utf8');
+  const m = src.match(/const BUNDLE_RE = (\/.*\/);/);
+  assert.ok(m, 'BUNDLE_RE is present in the shim');
+  const bundleRe = eval(m[1]);
+
+  const shouldMatch = [
+    '/home/u/.zcode/server/agents/glm/zcode.cjs',
+    '/data/local/tmp/fh/zcode.cjs',
+    '/data/local/tmp/fh/zcode-agent.cjs',
+    'C:\\Users\\x\\.zcode\\agents\\zcode.cjs',
+  ];
+  const mustNotMatch = [
+    '/home/u/.zcode/server/zcode-server.cjs', // the server itself
+    '/x/zcode-server.cjs',
+    '/x/zmzcode.cjs',
+    '/x/otherzcode.cjs',
+    '/x/notzcode.cjs',
+  ];
+  for (const p of shouldMatch) assert.ok(bundleRe.test(p), 'should match: ' + p);
+  for (const p of mustNotMatch) assert.ok(!bundleRe.test(p), 'must NOT match: ' + p);
+});
+
+test('the worker wrapper ships beside the shim and forwards stdio', () => {
+  const wrapper = path.join(path.dirname(NODE22_SHIM), 'mitti-agent-wrapper.cjs');
+  assert.equal(fs.existsSync(wrapper), true, 'wrapper exists at ' + wrapper);
+  const src = fs.readFileSync(wrapper, 'utf8');
+  // It must be a worker-thread runner that forwards real stdio both ways and
+  // propagates the exit code — that is what makes it stand in for a child.
+  assert.ok(src.includes("require('node:worker_threads')"), 'uses worker_threads');
+  assert.ok(src.includes('process.stdin.pipe('), 'forwards stdin in');
+  assert.ok(src.includes('worker.stdout.pipe(process.stdout)'), 'forwards stdout out');
+  assert.ok(src.includes("worker.on('exit'"), 'propagates the exit code');
+  // And it must be syntactically valid, since a broken wrapper would turn a
+  // working agent into a silent failure.
+  execFileSync(process.execPath, ['--check', wrapper], { encoding: 'utf8' });
+});
+
 // --- the ICU-less gap: ZCode's server uses \p{...} regexes and Intl, neither of
 // which exists on nodejs-mobile's Node 18. Both are only reachable when the shim
 // runs on a Node that has no ICU, which every dev machine here does — so the

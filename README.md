@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.18.2-orange)
+![Release](https://img.shields.io/badge/release-v0.19.0-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,22 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.19.0
+
+- **ZCode's agent stopped crashing on the phone — and the reason turned out to be a Node version, not ICU.** v0.18.2 got ZCode's *server* through, but the session still died with `write EPIPE`, because ZCode runs a **second** process (the agent, `glm/zcode.cjs`, ~15 MB) and that one crashed too. Running the real bundle on the desktop, side by side, showed what it actually needs:
+
+  | Runtime | Result on the same bundle |
+  |---|---|
+  | Node 18 (what the APK ships) | exits 0 with **zero** output |
+  | Node 18 + the sqlite stand-in alone | still zero — dies at `crypto is not defined` |
+  | Node 20 | real protocol output |
+  | Node 22 | real protocol output |
+
+  So the bundle is a **Node 20/22 program**. It requires three builtins Node 18 does not have: `node:sea` (Node 20.12), `node:sqlite` (Node 22.5), and `globalThis.crypto` (a global from Node 19 — Node 18 has WebCrypto, just not the global). The shim now closes all three, and the sqlite stand-in answers the **WAL handshake** the client insists on (`pragma journal_mode` must read back `wal`, or it aborts startup).
+  - **A native crash remained on arm64 Android**, and it was isolated precisely: the bundle **SIGSEGVs on the main thread** (exit 139, every run) but **exits cleanly on a worker thread** — at 4 MB, 8 MB, 16 MB and 64 MB alike. So it is not a stack shortage (`--stack-size` and `ulimit -s` change nothing), and desktop x86-64 does not crash at all. The shim now runs the **agent** bundle on a worker thread, forwarding stdin/stdout/stderr and the exit code, so whoever spawned it sees an ordinary child.
+  - **Scoped deliberately narrow, and verified on the phone:** only the agent is rerouted — never `zcode-server.cjs`, whose long-lived process would break the whole connection if it were moved onto a worker. On the device: agent `wouldRedirect=true`, server `wouldRedirect=false`, and a server-shaped spawn provably still runs on the main thread.
+  - **Honest limits:** the `\p{...}` ranges are explicit approximations, not the real Unicode tables; the `Intl` stand-in formats in the phone's local time and cannot resolve an arbitrary IANA zone; and the `node:sqlite` stand-in is in memory, so ZCode's SQLite-backed task and automation history do not survive a restart. The worker reroute is a workaround for an arm64 Android fault we isolated but did not root-cause; desktop never needed it.
 
 ## What you get in v0.18.2
 
