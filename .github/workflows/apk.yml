@@ -75,14 +75,48 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "ndk;27.0.12077973" "cmake;3.22.1" "platforms;android-36" "build-tools;36.0.0" >/dev/null
 
-      - name: Fetch the nodejs-mobile runtime (prebuilt libnode, no build)
+      - name: Fetch libnode.so — OUR build, with ICU
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/nodejs-mobile.zip"             "https://github.com/nodejs-mobile/nodejs-mobile/releases/download/v18.20.4/nodejs-mobile-v18.20.4-android.zip"
-          mkdir -p "$RUNNER_TEMP/nodejs-mobile" && unzip -q "$RUNNER_TEMP/nodejs-mobile.zip" -d "$RUNNER_TEMP/nodejs-mobile"
+          # NOT the upstream prebuilt any more. That one is compiled with
+          # --with-intl=none, which costs us three things: RegExp Unicode
+          # property escapes cannot compile, Intl does not exist, and
+          # v8_enable_i18n_support=0 makes the runtime SIGSEGV on bundles that
+          # expect ICU (measured on a real phone). This release asset comes from
+          # .github/workflows/node-icu.yml, which rebuilds nodejs-mobile's own
+          # v18.20.4 tree with exactly one flag changed:
+          #   --with-intl=none  ->  --with-intl=small-icu
+          ICU_TAG="libnode-icu-18.20.4-smallicu"
+          ICU_ZIP="libnode-icu-v18.20.4.zip"
+          curl -fsSL -o "$RUNNER_TEMP/libnode-icu.zip" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${ICU_TAG}/${ICU_ZIP}"
+          mkdir -p "$RUNNER_TEMP/libnode-icu"
+          unzip -q "$RUNNER_TEMP/libnode-icu.zip" -d "$RUNNER_TEMP/libnode-icu"
           for abi in arm64-v8a armeabi-v7a x86_64; do
+            src="$RUNNER_TEMP/libnode-icu/bin/$abi/libnode.so"
+            test -f "$src" || { echo "ICU build has no libnode.so for $abi"; find "$RUNNER_TEMP/libnode-icu" -type f; exit 1; }
             mkdir -p android/app/src/main/jniLibs/$abi
-            cp "$RUNNER_TEMP/nodejs-mobile/bin/$abi/libnode.so" android/app/src/main/jniLibs/$abi/
+            cp "$src" android/app/src/main/jniLibs/$abi/
           done
+
+      - name: Assert the embedded Node really has ICU
+        run: |
+          # A silent regression here would ship the old behaviour with a new
+          # version number, which is the one outcome worth failing the build for.
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            so="android/app/src/main/jniLibs/$abi/libnode.so"
+            echo "--- $abi: $(stat -c %s "$so") bytes ---"
+            readelf -sW "$so" | grep -q '_ZN4node5StartEiPPc' \
+              || { echo "$abi: node::Start is not exported — the app cannot start Node"; exit 1; }
+            readelf -sW "$so" | grep -qiE 'u_strToLower|U_ICU_VERSION|icu_7[0-9]::' \
+              || { echo "$abi: no ICU symbols — this is NOT the ICU build"; exit 1; }
+            # It must not need an external libicu*.so: we ship only this file.
+            if readelf -dW "$so" | grep -i NEEDED | grep -qi icu; then
+              echo "$abi: libnode.so depends on an external ICU library, which the APK does not contain"
+              readelf -dW "$so" | grep -i NEEDED
+              exit 1
+            fi
+          done
+          echo "All three ABIs are ICU-enabled and self-contained."
 
       - name: Bundle libc++_shared.so from the NDK (libnode.so needs it at runtime)
         run: |
@@ -204,6 +238,7 @@ jobs:
           cp "$APK" "MittiCloud-v${VERSION}.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "MittiCloud-v${VERSION}.apk"
           for abi in arm64-v8a armeabi-v7a x86_64; do
+            unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libnode.so" || { echo "APK is missing libnode.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libc++_shared.so" || { echo "APK is missing libc++_shared.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittinode.so" || { echo "APK is missing libmittinode.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittish.so" || { echo "APK is missing libmittish.so for $abi"; exit 1; }

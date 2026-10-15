@@ -93,30 +93,45 @@ jobs:
           # It must say small-icu now, or the build is pointless.
           grep -q -- '--with-intl=small-icu' "$f" || { echo "patch did not apply"; exit 1; }
 
-      - name: Change ONE feature flag for arm — pin host_arch to x64
+      - name: Pin gyp host_arch to x64 for the 32-bit target
         if: matrix.arch == 'arm'
         run: |
-          # Why: for the 32-bit target gyp resolves host_arch to its default
-          # 'ia32' (common.gypi:8) and appends -m32 to the HOST tool links — so
-          # gen-regexp-special-case links as i386 while ICU's host objects were
-          # compiled -m64, and the link dies with "incompatible with i386
-          # output". The host tools run on this x86-64 runner; the TARGET arch
-          # is decided by --dest-cpu, not host_arch. (Measured: the arm64 job
-          # links host tools "-m64 -m64"; the arm job linked "-m64 -m32" and
-          # failed exactly there.)
+          # Why: configure.py detects host_arch by compiling a size probe with
+          # $CC (host_arch_cc). For the arm target $CC is the 32-bit android
+          # clang, so the probe answers ia32 even though this runner is x86-64,
+          # and common.gypi then appends -m32 to every HOST tool link. The ICU
+          # host objects still compile as x86-64, but gen-regexp-special-case
+          # is then LINKED as i386 and dies with "architecture of input file
+          # ... is incompatible with i386 output" (measured in the failed arm
+          # job; the arm64 job links the same host tools -m64 only and works,
+          # because its android clang is 64-bit and the probe answers x64).
+          # The TARGET architecture comes from --dest-cpu, not host_arch, so
+          # pinning host_arch changes nothing about the libnode.so we produce —
+          # it only stops the host tools from being linked as i386.
           #
-          # Why here and not an env var: android_configure.py OVERWRITES
-          # GYP_DEFINES wholesale (os.environ['GYP_DEFINES'] = GYP_DEFINES), so
-          # anything exported before android_build.sh is discarded.
+          # Why patch the file and not export GYP_DEFINES: android_configure.py
+          # OVERWRITES the env var wholesale, so anything exported before
+          # android_build.sh is discarded. -D defines from GYP_DEFINES take
+          # precedence over every .gyp/.gypi value, which is what we need.
+          #
+          # Why python str.replace and not sed/grep: the anchor contains [ ]
+          # and both sed and plain grep read those as a bracket expression.
+          # That exact bug already failed this step twice. No regex anywhere.
           f="$RUNNER_TEMP/nodejs-mobile/android_configure.py"
-          # grep -F, NOT plain grep: the anchor contains [ ] which plain grep
-          # reads as a character class — that exact bug failed this step once
-          # already (exit 1 "anchor not found" on a file that contains it).
-          anchor="os.environ['GYP_DEFINES'] = GYP_DEFINES"
-          grep -qF "$anchor" "$f" || { echo "anchor line not found in $f"; exit 1; }
-          sed -i "s|$anchor|$anchor; os.environ['GYP_DEFINES'] += ' host_arch=x64'|" "$f"
-          echo "--- patched lines ---"
-          grep -n "host_arch" "$f"
+          python3 - "$f" <<'PYEOF'
+          import sys
+          path = sys.argv[1]
+          src = open(path, encoding='utf-8').read()
+          anchor = "os.environ['GYP_DEFINES'] = GYP_DEFINES"
+          if anchor not in src:
+            sys.exit('anchor line missing — upstream android_configure.py changed')
+          if src.count(anchor) != 1:
+            sys.exit('anchor appears more than once — refusing to patch blindly')
+          line = "os.environ['GYP_DEFINES'] += ' host_arch=x64'  # mitticloud: host tools run on this x64 runner"
+          open(path, 'w', encoding='utf-8').write(src.replace(anchor, anchor + '\n' + line + '\n'))
+          print('patched: gyp host_arch pinned to x64')
+          PYEOF
+          grep -n "host_arch=x64" "$f" || { echo "patch did not land"; exit 1; }
 
       - name: Build libnode.so for ${{ matrix.abi }}
         env:
