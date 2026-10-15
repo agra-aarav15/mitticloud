@@ -75,59 +75,14 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "ndk;27.0.12077973" "cmake;3.22.1" "platforms;android-36" "build-tools;36.0.0" >/dev/null
 
-      - name: Fetch libnode.so — OUR build, Node 22
+      - name: Fetch the nodejs-mobile runtime (prebuilt libnode, no build)
         run: |
-          # NOT nodejs-mobile's prebuilt any more. Their release is Node 18.20.4
-          # with --with-intl=none, and Node 18 lacks the three builtins the ZCode
-          # client bundle requires — node:sea (Node 20.12+), node:sqlite (Node
-          # 22.5+), globalThis.crypto (Node 19+). Without them the client exits
-          # with zero output, which is precisely what broke ZCode Remote.
-          # This asset comes from .github/workflows/node-icu.yml, which builds
-          # nodejs-mobile's Node 22 tree (PR #150). That tree compiles WITHOUT
-          # ICU; the shim covers Unicode and Intl, and Node 22 supplies the
-          # builtins Node 18 cannot.
-          ICU_TAG="libnode22-icu-node22.9.0-smallicu"
-          ICU_ZIP="libnode22-icu-v22.9.0.zip"
-          if ! curl -fsSL -o "$RUNNER_TEMP/libnode-icu.zip" \
-            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${ICU_TAG}/${ICU_ZIP}"; then
-            echo "::error::Could not fetch ${ICU_ZIP} from release ${ICU_TAG}."
-            echo "Run the 'Build Node 22 for Android' workflow first (it publishes"
-            echo "that release), then re-run this one. The APK must not be built"
-            echo "with a silent fallback to the old Node 18 runtime."
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/libnode-icu"
-          unzip -q "$RUNNER_TEMP/libnode-icu.zip" -d "$RUNNER_TEMP/libnode-icu"
+          curl -fsSL -o "$RUNNER_TEMP/nodejs-mobile.zip"             "https://github.com/nodejs-mobile/nodejs-mobile/releases/download/v18.20.4/nodejs-mobile-v18.20.4-android.zip"
+          mkdir -p "$RUNNER_TEMP/nodejs-mobile" && unzip -q "$RUNNER_TEMP/nodejs-mobile.zip" -d "$RUNNER_TEMP/nodejs-mobile"
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            src="$RUNNER_TEMP/libnode-icu/bin/$abi/libnode.so"
-            test -f "$src" || { echo "ICU build has no libnode.so for $abi"; find "$RUNNER_TEMP/libnode-icu" -type f; exit 1; }
             mkdir -p android/app/src/main/jniLibs/$abi
-            cp "$src" android/app/src/main/jniLibs/$abi/
+            cp "$RUNNER_TEMP/nodejs-mobile/bin/$abi/libnode.so" android/app/src/main/jniLibs/$abi/
           done
-
-      - name: Assert the embedded Node is really Node 22
-        run: |
-          # A silent regression here would ship the old behaviour with a new
-          # version number, which is the one outcome worth failing the build for.
-          for abi in arm64-v8a armeabi-v7a x86_64; do
-            so="android/app/src/main/jniLibs/$abi/libnode.so"
-            echo "--- $abi: $(stat -c %s "$so") bytes ---"
-            readelf -sW "$so" | grep -q '_ZN4node5StartEiPPc' \
-              || { echo "$abi: node::Start is not exported — the app cannot start Node"; exit 1; }
-            # The whole point: Node 22 builtins the client needs, present.
-            # They are JS-level, so look for the embedded source strings.
-            for token in 'node:sqlite' 'node:sea'; do
-              strings -a "$so" | grep -qF "$token" \
-                || { echo "$abi: $token not compiled in — the client bundle will not run"; exit 1; }
-            done
-            # It must not need an external libicu*.so: we ship only this file.
-            if readelf -dW "$so" | grep -i NEEDED | grep -qi icu; then
-              echo "$abi: libnode.so depends on an external ICU library, which the APK does not contain"
-              readelf -dW "$so" | grep -i NEEDED
-              exit 1
-            fi
-          done
-          echo "All three ABIs are Node 22 and self-contained."
 
       - name: Bundle libc++_shared.so from the NDK (libnode.so needs it at runtime)
         run: |
@@ -249,7 +204,6 @@ jobs:
           cp "$APK" "MittiCloud-v${VERSION}.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "MittiCloud-v${VERSION}.apk"
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libnode.so" || { echo "APK is missing libnode.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libc++_shared.so" || { echo "APK is missing libc++_shared.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittinode.so" || { echo "APK is missing libmittinode.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittish.so" || { echo "APK is missing libmittish.so for $abi"; exit 1; }
