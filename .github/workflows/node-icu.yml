@@ -20,21 +20,26 @@ name: Build Node 22 for Android
 #
 # SOURCE
 # nodejs-mobile has no released Node 22 for Android. The tree is the open PR
-# #150 ("Update22-9-0. fixed ios and android builds") on branch update22-9-0;
-# that PR is what makes the Android build work at all. We pin its head SHA for
-# reproducibility instead of tracking a moving branch.
+# #150 ("Update22-9-0. fixed ios and android builds"); that PR is what makes the
+# Android build work at all. We pin its head SHA for reproducibility instead of
+# tracking a moving branch.
 #
-# TWO DELIBERATE PATCHES TO THAT TREE
-#   1. --with-intl=none -> small-icu   (same reason as always: Unicode escapes
-#      and Intl do not exist without ICU)
-#   2. nothing else. I first also tried re-enabling WebAssembly, on the theory
-#      that the client bundle mentions it. That FAILED, and the log said why:
-#      deps/v8/src/handles/handles.h:147 "static assertion failed: This handle
-#      does not reference a heap object", raised while compiling exactly the
-#      wasm files (wasm-to-js-tq-csa.cc, js-to-wasm-tq-csa.cc) and
-#      setup-isolate-full.o. PR #150 turns WebAssembly off because this V8 tree
-#      does not compile with it on; that is an upstream decision, not a size
-#      trim to be second-guessed. So we keep the tree as its author left it.
+# WHY THIS BUILDS WITHOUT ICU
+# I tried to enable ICU (--with-intl=small-icu) and it does not build: the
+# failure lands on exactly the ICU-dependent V8 units (the torque-generated
+# intl-objects-tq / js-date-time-format-tq / js-collator-tq files) with
+#   deps/v8/src/handles/handles.h:147: error: static assertion failed:
+#   This handle does not reference a heap object.
+# on all three ABIs, and it is not the WebAssembly setting — it persists with
+# wasm off. PR #150 was authored and validated with ICU off, so that is the
+# configuration we build. It costs nothing here: the shim already supplies
+# Unicode property escapes and Intl, and on desktop Node 22 with the shim
+# forced down its no-ICU path the client bundle produces the full 11295-byte
+# startup, byte-for-byte what a native run produces.
+#
+# What Node 22 buys regardless of ICU is the part the shim cannot fake cheaply
+# and correctly: node:sea, node:sqlite, globalThis.crypto — the three builtins
+# whose absence made the ZCode client exit with zero output on Node 18.
 
 on:
   push:
@@ -93,17 +98,7 @@ jobs:
           echo "--- declared Node version ---"
           grep -E 'NODE_MAJOR_VERSION|NODE_MINOR_VERSION|NODE_PATCH_VERSION' src/node_version.h | head -3
 
-      - name: Patch 1 — enable ICU (--with-intl=none becomes small-icu)
-        run: |
-          cd "$RUNNER_TEMP/nodejs-mobile"
-          f=android_configure.py
-          grep -qF -- '--with-intl=none' "$f" || { echo "expected --with-intl=none in $f"; exit 1; }
-          sed -i 's/--with-intl=none/--with-intl=small-icu/' "$f"
-          echo "--- configure line after patching ---"
-          grep -n 'with-intl' "$f"
-          grep -qF -- '--with-intl=small-icu' "$f" || { echo "ICU patch did not apply"; exit 1; }
-
-      - name: Patch 2 — for the 32-bit target, stop gyp linking host tools as i386
+      - name: Patch 1 — for the 32-bit target, stop gyp linking host tools as i386
         if: matrix.arch == 'arm'
         run: |
           # Measured on the Node 18 run: the arm job logged
@@ -168,10 +163,19 @@ jobs:
           echo "--- 1. node::Start exported (the launcher calls exactly this) ---"
           readelf -sW "$so" | grep -q '_ZN4node5StartEiPPc' || { echo "FAIL: node::Start missing"; fail=1; }
 
-          echo "--- 2. ICU compiled in ---"
-          readelf -sW "$so" | grep -qiE 'u_strToLower|U_ICU_VERSION|icu_7[0-9]::' || { echo "FAIL: no ICU symbols"; fail=1; }
+          echo "--- 2. built WITHOUT ICU, on purpose ---"
+          # This tree only compiles with ICU off (the V8_INTL_SUPPORT code paths
+          # fail to build; see the header). That is acceptable because the shim
+          # supplies Unicode property escapes and Intl, and it was measured
+          # working: on desktop Node 22 with MITTI_FORCE_NO_ICU=1 the client
+          # bundle emits the full 11295-byte startup, identical to a real run.
+          if readelf -sW "$so" | grep -qiE 'u_strToLower|U_ICU_VERSION|icu_7[0-9]::'; then
+            echo "note: ICU symbols present (unexpected for this build, but not fatal)"
+          else
+            echo "ok: no ICU, as intended"
+          fi
 
-          echo "--- 3. no external libicu dependency (we ship only this file) ---"
+          echo "--- 3. no external ICU dependency (we ship only this file) ---"
           if readelf -dW "$so" | grep -i NEEDED | grep -qi icu; then
             echo "FAIL: depends on an external ICU library"; readelf -dW "$so" | grep -i NEEDED; fail=1
           fi
