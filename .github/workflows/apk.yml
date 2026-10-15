@@ -75,21 +75,27 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "ndk;27.0.12077973" "cmake;3.22.1" "platforms;android-36" "build-tools;36.0.0" >/dev/null
 
-      - name: Fetch libnode.so — OUR build, Node 22 with ICU
+      - name: Fetch libnode.so — OUR build, Node 22
         run: |
           # NOT nodejs-mobile's prebuilt any more. Their release is Node 18.20.4
-          # with --with-intl=none, which costs us four things:
-          #   * RegExp Unicode property escapes cannot compile (no ICU)
-          #   * Intl does not exist
-          #   * node:sea (Node 20.12+) and node:sqlite (Node 22.5+) are missing,
-          #     and the ZCode client bundle requires both — without them it exits
-          #     with zero output, which is what broke ZCode Remote.
+          # with --with-intl=none, and Node 18 lacks the three builtins the ZCode
+          # client bundle requires — node:sea (Node 20.12+), node:sqlite (Node
+          # 22.5+), globalThis.crypto (Node 19+). Without them the client exits
+          # with zero output, which is precisely what broke ZCode Remote.
           # This asset comes from .github/workflows/node-icu.yml, which builds
-          # nodejs-mobile's Node 22 tree (PR #150) with --with-intl=small-icu.
+          # nodejs-mobile's Node 22 tree (PR #150). That tree compiles WITHOUT
+          # ICU; the shim covers Unicode and Intl, and Node 22 supplies the
+          # builtins Node 18 cannot.
           ICU_TAG="libnode22-icu-node22.9.0-smallicu"
           ICU_ZIP="libnode22-icu-v22.9.0.zip"
-          curl -fsSL -o "$RUNNER_TEMP/libnode-icu.zip" \
-            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${ICU_TAG}/${ICU_ZIP}"
+          if ! curl -fsSL -o "$RUNNER_TEMP/libnode-icu.zip" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${ICU_TAG}/${ICU_ZIP}"; then
+            echo "::error::Could not fetch ${ICU_ZIP} from release ${ICU_TAG}."
+            echo "Run the 'Build Node 22 for Android' workflow first (it publishes"
+            echo "that release), then re-run this one. The APK must not be built"
+            echo "with a silent fallback to the old Node 18 runtime."
+            exit 1
+          fi
           mkdir -p "$RUNNER_TEMP/libnode-icu"
           unzip -q "$RUNNER_TEMP/libnode-icu.zip" -d "$RUNNER_TEMP/libnode-icu"
           for abi in arm64-v8a armeabi-v7a x86_64; do
@@ -99,7 +105,7 @@ jobs:
             cp "$src" android/app/src/main/jniLibs/$abi/
           done
 
-      - name: Assert the embedded Node is Node 22 with ICU
+      - name: Assert the embedded Node is really Node 22
         run: |
           # A silent regression here would ship the old behaviour with a new
           # version number, which is the one outcome worth failing the build for.
@@ -108,10 +114,8 @@ jobs:
             echo "--- $abi: $(stat -c %s "$so") bytes ---"
             readelf -sW "$so" | grep -q '_ZN4node5StartEiPPc' \
               || { echo "$abi: node::Start is not exported — the app cannot start Node"; exit 1; }
-            readelf -sW "$so" | grep -qiE 'u_strToLower|U_ICU_VERSION|icu_7[0-9]::' \
-              || { echo "$abi: no ICU symbols — this is NOT the ICU build"; exit 1; }
-            # Node 22 builtins the client bundle needs. They are JS-level, so
-            # look for the embedded source strings.
+            # The whole point: Node 22 builtins the client needs, present.
+            # They are JS-level, so look for the embedded source strings.
             for token in 'node:sqlite' 'node:sea'; do
               strings -a "$so" | grep -qF "$token" \
                 || { echo "$abi: $token not compiled in — the client bundle will not run"; exit 1; }
@@ -123,7 +127,7 @@ jobs:
               exit 1
             fi
           done
-          echo "All three ABIs are Node 22, ICU-enabled, and self-contained."
+          echo "All three ABIs are Node 22 and self-contained."
 
       - name: Bundle libc++_shared.so from the NDK (libnode.so needs it at runtime)
         run: |

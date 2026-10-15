@@ -47,22 +47,37 @@ function warnOnce(what, detail) {
 // ---------------------------------------------------------------------------
 
 /**
- * A statement that answers the shapes zcode-server uses (run/get/all/iterate)
- * without pretending to parse general SQL: it keeps nothing and returns empty
- * results, which is the truthful answer for "no rows stored".
+ * A statement that answers the shapes zcode-server uses (run/get/all/iterate).
+ * It is not a SQL engine. Two things it must get right, because the client
+ * refuses to start otherwise:
+ *
+ *   * `pragma journal_mode` must read back as "wal". The client runs
+ *     `pragma journal_mode = wal`, re-reads it, and throws
+ *     "SQLite refused WAL journal mode" unless it sees "wal".
+ *   * `pragma journal_mode = wal` (the write form) must not throw.
+ *
+ * Everything else answers with the honest "nothing stored here": writes report
+ * one changed row, reads return empty. That is why the warning below matters —
+ * the store keeps nothing across restarts.
  */
 class StatementSync {
   constructor(sql) {
     this.source = String(sql || '');
+    this.isJournalModeRead = /^\s*pragma\s+journal_mode\s*;?\s*$/i.test(this.source);
+    this.isJournalModeWrite = /^\s*pragma\s+journal_mode\s*=/i.test(this.source);
   }
   run() {
-    warnOnce('SQLite writes', 'kept in memory only, so task/schedule history will not persist across restarts');
+    if (!this.isJournalModeWrite) {
+      warnOnce('SQLite writes', 'kept in memory only, so task/schedule history will not persist across restarts');
+    }
     return { changes: 1, lastInsertRowid: 0 };
   }
   get() {
+    if (this.isJournalModeRead || this.isJournalModeWrite) return { journal_mode: 'wal' };
     return undefined;
   }
   all() {
+    if (this.isJournalModeRead || this.isJournalModeWrite) return [{ journal_mode: 'wal' }];
     return [];
   }
   iterate() {
@@ -101,13 +116,68 @@ class DatabaseSync {
 
 const sqlite = { DatabaseSync, StatementSync, backup: async () => {} };
 
-// Resolve `node:sqlite` (and the bare `sqlite` some bundlers emit) to the
-// stand-in. Everything else falls through untouched.
+// ---------------------------------------------------------------------------
+// 1b. `globalThis.crypto` — present in Node 19+, absent in Node 18
+// ---------------------------------------------------------------------------
+//
+// Node 18 HAS WebCrypto; it just is not exposed as a bare global yet (that
+// landed in Node 19). The client bundle calls `crypto.subtle…` directly, so on
+// a bare Node 18 it dies with "crypto is not defined". One defineProperty is
+// the whole fix — and it is the real implementation, not a stand-in.
+if (typeof globalThis.crypto === 'undefined' && require('node:crypto').webcrypto) {
+  Object.defineProperty(globalThis, 'crypto', {
+    value: require('node:crypto').webcrypto,
+    writable: true,
+    configurable: true,
+    enumerable: false,
+  });
+  warnOnce('globalThis.crypto', 'exposed from node:crypto.webcrypto, because this Node is older than 19');
+}
+// randomUUID lives on node:crypto in 18 and moved onto globalThis.crypto later.
+if (globalThis.crypto && typeof globalThis.crypto.randomUUID !== 'function') {
+  globalThis.crypto.randomUUID = () => require('node:crypto').randomUUID();
+}
+
+// ---------------------------------------------------------------------------
+// 1c. `node:sea` — present in Node 20.12+, absent in Node 18
+// ---------------------------------------------------------------------------
+//
+// Single-executable-application support. This process is not a SEA, which is
+// exactly what the real module reports for a normal Node run, so the honest
+// answers are: isSea() false, no assets. Answering that way keeps the client's
+// own feature detection on the correct branch instead of throwing.
+const sea = {
+  isSea: () => false,
+  getAsset: () => {
+    const e = new Error('Cannot find the requested asset: not a single executable application');
+    e.code = 'ERR_NOT_IN_SEA';
+    throw e;
+  },
+  getRawAsset: () => {
+    const e = new Error('Cannot find the requested asset: not a single executable application');
+    e.code = 'ERR_NOT_IN_SEA';
+    throw e;
+  },
+  getAssetKeys: () => [],
+};
+
+// Resolve `node:sqlite`, `node:sea` (and the bare `sqlite`/`sea` some bundlers
+// emit) to the stand-ins. Everything else falls through untouched.
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, isMain) {
   if (request === 'node:sqlite' || request === 'sqlite') return sqlite;
+  if (request === 'node:sea' || request === 'sea') return sea;
   return originalLoad.call(this, request, parent, isMain);
 };
+// Give the loader the same answers for a bare `require('sea')` made through
+// ESM interop, which does not go through Module._load.
+if (!process.versions.sea) {
+  try {
+    Object.defineProperty(process.versions, 'sea', { get: () => false });
+  } catch {
+    /* non-configurable on some builds: the Module._load path still covers us */
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 2. Unicode property escapes — only on a build without ICU

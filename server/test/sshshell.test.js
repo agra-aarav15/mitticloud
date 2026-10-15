@@ -264,6 +264,79 @@ test('the shim file exists where the rewrite points and answers node:sqlite', ()
   assert.equal(out.trim(), 'function function');
 });
 
+// --- the rest of the Node 22 surface the ZCode client needs ---
+//
+// Each of these was a real blocker found by running the actual client bundle,
+// so they are pinned here. The client refuses to start unless journal_mode
+// reads back as "wal"; it calls `crypto.…` as a bare global; and it requires
+// node:sea.
+
+test('the sqlite stand-in answers the WAL handshake the client insists on', () => {
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--require',
+      NODE22_SHIM,
+      '-e',
+      `
+      const { DatabaseSync } = require('node:sqlite');
+      const db = new DatabaseSync(':memory:');
+      // the write form must not throw
+      db.prepare('pragma journal_mode = wal').run();
+      // the read form must come back "wal", or the client aborts startup
+      const read = db.prepare('pragma journal_mode').get();
+      process.stdout.write(String(read && read.journal_mode));
+      `,
+    ],
+    { encoding: 'utf8' }
+  );
+  assert.equal(out.trim(), 'wal');
+});
+
+test('the shim exposes crypto and node:sea that Node 18 lacks as globals', () => {
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--require',
+      NODE22_SHIM,
+      '-e',
+      `
+      const sea = require('node:sea');
+      process.stdout.write([
+        typeof globalThis.crypto,
+        typeof globalThis.crypto.subtle,
+        typeof globalThis.crypto.randomUUID,
+        sea.isSea(),
+        sea.getAssetKeys().length,
+      ].join(' '));
+      `,
+    ],
+    { encoding: 'utf8' }
+  );
+  // crypto object, subtle present, randomUUID callable, not a SEA, no assets
+  assert.equal(out.trim(), 'object object function false 0');
+});
+
+test('node:sea reports the truth for a non-SEA process instead of throwing', () => {
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--require',
+      NODE22_SHIM,
+      '-e',
+      `
+      const sea = require('node:sea');
+      let code = 'none';
+      try { sea.getAsset('nope'); } catch (e) { code = e.code; }
+      process.stdout.write(code);
+      `,
+    ],
+    { encoding: 'utf8' }
+  );
+  // the real module throws ERR_NOT_IN_SEA when there are no assets
+  assert.equal(out.trim(), 'ERR_NOT_IN_SEA');
+});
+
 // --- the ICU-less gap: ZCode's server uses \p{...} regexes and Intl, neither of
 // which exists on nodejs-mobile's Node 18. Both are only reachable when the shim
 // runs on a Node that has no ICU, which every dev machine here does — so the
