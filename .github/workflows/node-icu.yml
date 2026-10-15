@@ -93,6 +93,28 @@ jobs:
           # It must say small-icu now, or the build is pointless.
           grep -q -- '--with-intl=small-icu' "$f" || { echo "patch did not apply"; exit 1; }
 
+      - name: Change ONE feature flag for arm — pin host_arch to x64
+        if: matrix.arch == 'arm'
+        run: |
+          # Why: for the 32-bit target gyp resolves host_arch to its default
+          # 'ia32' (common.gypi:8) and appends -m32 to the HOST tool links — so
+          # gen-regexp-special-case links as i386 while ICU's host objects were
+          # compiled -m64, and the link dies with "incompatible with i386
+          # output". The host tools run on this x86-64 runner; the TARGET arch
+          # is decided by --dest-cpu, not host_arch. (Measured: the arm64 job
+          # links host tools "-m64 -m64"; the arm job linked "-m64 -m32" and
+          # failed exactly there.)
+          #
+          # Why here and not an env var: android_configure.py OVERWRITES
+          # GYP_DEFINES wholesale (os.environ['GYP_DEFINES'] = GYP_DEFINES), so
+          # anything exported before android_build.sh is discarded.
+          f="$RUNNER_TEMP/nodejs-mobile/android_configure.py"
+          anchor="os.environ['GYP_DEFINES'] = GYP_DEFINES"
+          grep -q "$anchor" "$f" || { echo "anchor line not found in $f"; exit 1; }
+          sed -i "s|$anchor|$anchor; os.environ['GYP_DEFINES'] += ' host_arch=x64'|" "$f"
+          echo "--- patched lines ---"
+          grep -n "host_arch" "$f"
+
       - name: Build libnode.so for ${{ matrix.abi }}
         env:
           NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -100,9 +122,24 @@ jobs:
           cd "$RUNNER_TEMP/nodejs-mobile"
           # One ABI per job: icutrim.py has known multi-arch failures when the
           # tree is reused across targets, and Node's build is not reentrant.
-          # No extra flags beyond the upstream script + the ICU change: keeping
-          # the delta to one line is the whole point of this workflow.
           ./tools/android_build.sh "$NDK" "$ANDROID_API" "${{ matrix.arch }}"
+
+      - name: Strip the debug sections (the APK ships this file three ABIs over)
+        run: |
+          NDK="${{ steps.setup-ndk.outputs.ndk-path }}"
+          so="$RUNNER_TEMP/nodejs-mobile/out_android/${{ matrix.abi }}/libnode.so"
+          before=$(stat -c %s "$so")
+          # Extract-and-strip keeps node::Start and every exported symbol; it
+          # only drops .debug_* and the local symbol table (with debug info the
+          # arm64 .so is 74 MB upstream-visible; stripped it is ~48 MB).
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objcopy" \
+            --strip-debug --strip-unneeded "$so" "$so.stripped"
+          mv "$so.stripped" "$so"
+          after=$(stat -c %s "$so")
+          echo "stripped: $before -> $after bytes"
+          # A strip must not break the launcher contract — re-assert it.
+          readelf -sW "$so" | grep -q '_ZN4node5StartEiPPc' \
+            || { echo "strip removed node::Start (!)"; exit 1; }
 
       - name: Verify the output before trusting it
         run: |
