@@ -75,18 +75,19 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "ndk;27.0.12077973" "cmake;3.22.1" "platforms;android-36" "build-tools;36.0.0" >/dev/null
 
-      - name: Fetch libnode.so — OUR build, with ICU
+      - name: Fetch libnode.so — OUR build, Node 22 with ICU
         run: |
-          # NOT the upstream prebuilt any more. That one is compiled with
-          # --with-intl=none, which costs us three things: RegExp Unicode
-          # property escapes cannot compile, Intl does not exist, and
-          # v8_enable_i18n_support=0 makes the runtime SIGSEGV on bundles that
-          # expect ICU (measured on a real phone). This release asset comes from
-          # .github/workflows/node-icu.yml, which rebuilds nodejs-mobile's own
-          # v18.20.4 tree with exactly one flag changed:
-          #   --with-intl=none  ->  --with-intl=small-icu
-          ICU_TAG="libnode-icu-18.20.4-smallicu"
-          ICU_ZIP="libnode-icu-v18.20.4.zip"
+          # NOT nodejs-mobile's prebuilt any more. Their release is Node 18.20.4
+          # with --with-intl=none, which costs us four things:
+          #   * RegExp Unicode property escapes cannot compile (no ICU)
+          #   * Intl does not exist
+          #   * node:sea (Node 20.12+) and node:sqlite (Node 22.5+) are missing,
+          #     and the ZCode client bundle requires both — without them it exits
+          #     with zero output, which is what broke ZCode Remote.
+          # This asset comes from .github/workflows/node-icu.yml, which builds
+          # nodejs-mobile's Node 22 tree (PR #150) with --with-intl=small-icu.
+          ICU_TAG="libnode22-icu-node22.9.0-smallicu"
+          ICU_ZIP="libnode22-icu-v22.9.0.zip"
           curl -fsSL -o "$RUNNER_TEMP/libnode-icu.zip" \
             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${ICU_TAG}/${ICU_ZIP}"
           mkdir -p "$RUNNER_TEMP/libnode-icu"
@@ -98,7 +99,7 @@ jobs:
             cp "$src" android/app/src/main/jniLibs/$abi/
           done
 
-      - name: Assert the embedded Node really has ICU
+      - name: Assert the embedded Node is Node 22 with ICU
         run: |
           # A silent regression here would ship the old behaviour with a new
           # version number, which is the one outcome worth failing the build for.
@@ -109,6 +110,12 @@ jobs:
               || { echo "$abi: node::Start is not exported — the app cannot start Node"; exit 1; }
             readelf -sW "$so" | grep -qiE 'u_strToLower|U_ICU_VERSION|icu_7[0-9]::' \
               || { echo "$abi: no ICU symbols — this is NOT the ICU build"; exit 1; }
+            # Node 22 builtins the client bundle needs. They are JS-level, so
+            # look for the embedded source strings.
+            for token in 'node:sqlite' 'node:sea'; do
+              strings -a "$so" | grep -qF "$token" \
+                || { echo "$abi: $token not compiled in — the client bundle will not run"; exit 1; }
+            done
             # It must not need an external libicu*.so: we ship only this file.
             if readelf -dW "$so" | grep -i NEEDED | grep -qi icu; then
               echo "$abi: libnode.so depends on an external ICU library, which the APK does not contain"
@@ -116,7 +123,7 @@ jobs:
               exit 1
             fi
           done
-          echo "All three ABIs are ICU-enabled and self-contained."
+          echo "All three ABIs are Node 22, ICU-enabled, and self-contained."
 
       - name: Bundle libc++_shared.so from the NDK (libnode.so needs it at runtime)
         run: |
