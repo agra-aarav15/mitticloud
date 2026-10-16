@@ -14,8 +14,9 @@ const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'mitticloud-sshshell-'));
 process.env.MITTICLOUD_VAULT_DIR = path.join(TMP_ROOT, 'vault');
 process.env.MITTICLOUD_DATA_DIR = path.join(TMP_ROOT, 'data');
 
-const { resolveShell, shellPath, redirectNodeInvocation, isEmbeddedAndroid, ptyHelper, NODE22_SHIM } =
+const { resolveShell, shellPath, shellEnv, redirectNodeInvocation, isEmbeddedAndroid, ptyHelper, NODE22_SHIM } =
   await import('../lib/sshserver.js');
+const { shellTmpDir, DATA_DIR } = await import('../lib/paths.js');
 const { nodeRuntime } = await import('../lib/apprunner.js');
 
 after(() => {
@@ -48,6 +49,36 @@ test('isEmbeddedAndroid is true when the app marks it so', () => {
   assert.equal(isEmbeddedAndroid(), process.platform === 'android');
   process.env.MITTICLOUD_EMBEDDED = '1';
   assert.equal(isEmbeddedAndroid(), true);
+});
+
+test('shellEnv hands embedded children a writable TMPDIR and respects an explicit one', () => {
+  // There is no /tmp on Android: a child whose os.tmpdir() falls back to it
+  // dies on the first socket bind (the agent crash-looped 114 times on
+  // `listen EACCES /tmp/znr-*.sock`). TMPDIR is how libuv is told better.
+  const savedTmp = process.env.TMPDIR;
+  const savedEmbedded = process.env.MITTICLOUD_EMBEDDED;
+  delete process.env.TMPDIR;
+  try {
+    delete process.env.MITTICLOUD_EMBEDDED;
+    if (process.platform !== 'android') {
+      assert.equal('TMPDIR' in shellEnv(), false, 'desktop: no TMPDIR is added');
+      assert.equal(shellTmpDir(), null, 'desktop: no tmp dir is created');
+    }
+
+    process.env.MITTICLOUD_EMBEDDED = '1';
+    const env = shellEnv();
+    assert.ok(env.TMPDIR, 'embedded: TMPDIR is set');
+    assert.equal(env.TMPDIR, path.join(DATA_DIR, 'tmp'), 'embedded: TMPDIR is under data/');
+    assert.equal(fs.existsSync(env.TMPDIR), true, 'embedded: TMPDIR exists');
+
+    process.env.TMPDIR = '/kept/tmp';
+    assert.equal(shellEnv().TMPDIR, '/kept/tmp', 'an explicit TMPDIR is respected');
+  } finally {
+    if (savedTmp === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmp;
+    if (savedEmbedded === undefined) delete process.env.MITTICLOUD_EMBEDDED;
+    else process.env.MITTICLOUD_EMBEDDED = savedEmbedded;
+  }
 });
 
 test('redirectNodeInvocation leaves ordinary commands alone', () => {
@@ -515,6 +546,25 @@ test('the shim answers Intl on a Node that has none, in local time', () => {
     { encoding: 'utf8', env: { ...process.env, MITTI_FORCE_NO_ICU: '1' } }
   );
   assert.equal(out.trim(), 'year=2026,month=10,day=14');
+});
+
+test('the Intl stand-ins work when called as plain functions, like the real ones', () => {
+  // ECMA-402 makes Intl constructors callable without `new` (they return a
+  // fresh instance) — the client's config reader calls DateTimeFormat that
+  // way, and the old class-based stand-in died with
+  // "cannot be invoked without 'new'".
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--require=' + NODE22_SHIM,
+      '-e',
+      'const f=Intl.DateTimeFormat("en-CA",{year:"numeric",month:"2-digit",day:"2-digit"});' +
+        'const g=Intl.NumberFormat("en-US");' +
+        'process.stdout.write(f.format(new Date(2026,9,14))+"|"+g.format(42));',
+    ],
+    { encoding: 'utf8', env: { ...process.env, MITTI_FORCE_NO_ICU: '1' } }
+  );
+  assert.equal(out.trim(), '2026-10-14|42');
 });
 
 test('on a full-ICU host the shim leaves regexes and Intl untouched', () => {

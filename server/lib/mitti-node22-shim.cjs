@@ -308,59 +308,62 @@ if (process.env.MITTI_FORCE_NO_ICU === '1' || typeof globalThis.Intl === 'undefi
       weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()],
     })[kind];
 
-  class DateTimeFormat {
-    constructor(locale, options) {
-      this.locale = typeof locale === 'string' && locale ? locale : 'en-US';
-      this.options = options && typeof options === 'object' ? options : {};
-      warnOnce('Intl', 'substituted a local-time formatter, because this device\'s Node ' + process.versions.node + ' has no ICU');
-    }
-    resolvedOptions() {
-      // Honest: this stand-in formats in the device's own local time and cannot
-      // resolve an arbitrary IANA zone (no ICU), so it says 'local' rather than
-      // claiming a zone it is not actually using.
-      return { locale: this.locale, timeZone: this.options.timeZone || 'local', calendar: 'gregory', numberingSystem: 'latn' };
-    }
-    format(date) {
-      const d = date instanceof Date ? date : new Date(date === undefined ? Date.now() : date);
-      const order = ['year', 'month', 'day', 'hour', 'minute', 'second'];
-      const wanted = order.filter((key) => key in this.options);
-      const keys = wanted.length ? wanted : ['year', 'month', 'day'];
-      // Join by what each pair of adjacent fields is: a date dash, a date/time
-      // space, or a time colon — the shape Intl would produce.
-      let out = '';
-      keys.forEach((key, idx) => {
-        if (idx > 0) {
-          const prev = keys[idx - 1];
-          const datePair = (a) => a === 'year' || a === 'month' || a === 'day';
-          out += datePair(prev) && datePair(key) ? '-' : datePair(prev) !== datePair(key) ? ' ' : ':';
-        }
-        out += field(d, key);
-      });
-      return out;
-    }
-    formatToParts(date) {
-      const d = date instanceof Date ? date : new Date(date === undefined ? Date.now() : date);
-      const want = ['year', 'month', 'day'];
-      return want.map((type) => ({ type, value: field(d, type) }));
-    }
-    formatRange(a, b) {
-      return `${this.format(a)} – ${this.format(b)}`;
-    }
+  // A function, not a class: ECMA-402 makes Intl constructors callable without
+  // `new` (they return a fresh instance), and the client's config reader does
+  // exactly that — a class here died with "cannot be invoked without 'new'".
+  function DateTimeFormat(locale, options) {
+    if (!new.target) return new DateTimeFormat(locale, options);
+    this.locale = typeof locale === 'string' && locale ? locale : 'en-US';
+    this.options = options && typeof options === 'object' ? options : {};
+    warnOnce('Intl', 'substituted a local-time formatter, because this device\'s Node ' + process.versions.node + ' has no ICU');
   }
+  DateTimeFormat.prototype.resolvedOptions = function () {
+    // Honest: this stand-in formats in the device's own local time and cannot
+    // resolve an arbitrary IANA zone (no ICU), so it says 'local' rather than
+    // claiming a zone it is not actually using.
+    return { locale: this.locale, timeZone: this.options.timeZone || 'local', calendar: 'gregory', numberingSystem: 'latn' };
+  };
+  DateTimeFormat.prototype.format = function (date) {
+    const d = date instanceof Date ? date : new Date(date === undefined ? Date.now() : date);
+    const order = ['year', 'month', 'day', 'hour', 'minute', 'second'];
+    const wanted = order.filter((key) => key in this.options);
+    const keys = wanted.length ? wanted : ['year', 'month', 'day'];
+    // Join by what each pair of adjacent fields is: a date dash, a date/time
+    // space, or a time colon — the shape Intl would produce.
+    let out = '';
+    keys.forEach((key, idx) => {
+      if (idx > 0) {
+        const prev = keys[idx - 1];
+        const datePair = (a) => a === 'year' || a === 'month' || a === 'day';
+        out += datePair(prev) && datePair(key) ? '-' : datePair(prev) !== datePair(key) ? ' ' : ':';
+      }
+      out += field(d, key);
+    });
+    return out;
+  };
+  DateTimeFormat.prototype.formatToParts = function (date) {
+    const d = date instanceof Date ? date : new Date(date === undefined ? Date.now() : date);
+    const want = ['year', 'month', 'day'];
+    return want.map((type) => ({ type, value: field(d, type) }));
+  };
+  DateTimeFormat.prototype.formatRange = function (a, b) {
+    return `${this.format(a)} – ${this.format(b)}`;
+  };
+
+  function NumberFormat(locale) {
+    if (!new.target) return new NumberFormat(locale);
+    this.locale = locale || 'en-US';
+  }
+  NumberFormat.prototype.format = function (n) {
+    return String(n);
+  };
+  NumberFormat.prototype.resolvedOptions = function () {
+    return { locale: this.locale };
+  };
 
   globalThis.Intl = {
     DateTimeFormat,
-    NumberFormat: class {
-      constructor(locale) {
-        this.locale = locale || 'en-US';
-      }
-      format(n) {
-        return String(n);
-      }
-      resolvedOptions() {
-        return { locale: this.locale };
-      }
-    },
+    NumberFormat,
     getCanonicalLocales: (l) => (Array.isArray(l) ? l : [l]).filter(Boolean),
   };
 }

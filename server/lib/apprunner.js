@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 
-import { DATA_DIR, FILES_DIR, PathError } from './paths.js';
+import { DATA_DIR, FILES_DIR, PathError, shellTmpDir } from './paths.js';
 import { spawnRequestFor } from './runner.js';
 import { classifyProject } from './buildqueue.js';
 import { fileURLToPath } from 'node:url';
@@ -212,6 +212,12 @@ export function buildEnv(appEnv, port) {
   env.PORT = String(port);
   for (const [k, v] of Object.entries(appEnv || {})) {
     if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) env[k] = String(v);
+  }
+  // On embedded Android there is no /tmp, so a child without TMPDIR dies on
+  // the first socket or scratch file. An explicitly set TMPDIR wins.
+  if (!env.TMPDIR) {
+    const tmp = shellTmpDir();
+    if (tmp) env.TMPDIR = tmp;
   }
   return env;
 }

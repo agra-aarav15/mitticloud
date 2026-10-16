@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.19.1-orange)
+![Release](https://img.shields.io/badge/release-v0.19.2-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,12 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.19.2
+
+- **The agent stops crash-looping: embedded children get a writable TMPDIR.** v0.19.1 got the agent spawning — and ZCode's log showed it immediately dying 114 times in 10 minutes on `listen EACCES /tmp/znr-*.sock`. There is no `/tmp` on Android, so `os.tmpdir()` falls back to the literal `/tmp`, which the app cannot write — and the agent's startup broker socket needs exactly that. SSH-spawned shells and hosted apps on the phone now get `TMPDIR=data/tmp` (created app-private; an explicitly set TMPDIR is respected). Desktops are untouched.
+  - **The Intl stand-in is callable without `new`, like the real one.** The client's config reader calls `Intl.DateTimeFormat(...)` as a plain function; the old class-based stand-in threw `cannot be invoked without 'new'`. Both stand-ins are functions now and return a fresh instance when called that way.
+  - **Honest limits, unchanged:** see v0.19.0 (in-memory sqlite, approximate Unicode ranges, local-time Intl, worker-reroute workaround).
 
 ## What you get in v0.19.1
 

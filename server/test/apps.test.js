@@ -189,6 +189,32 @@ test('npmInstallAvailable answers a boolean (no registry contact)', async () => 
   assert.equal(typeof (await npmInstallAvailable()), 'boolean');
 });
 
+test('buildEnv: TMPDIR is provided on embedded Android, untouched elsewhere', () => {
+  // There is no /tmp on Android, so a child without TMPDIR dies on the first
+  // socket or scratch file (measured: the agent crash-looped on
+  // `listen EACCES /tmp/znr-*.sock`). An explicitly set TMPDIR always wins.
+  const savedTmp = process.env.TMPDIR;
+  const savedEmbedded = process.env.MITTICLOUD_EMBEDDED;
+  delete process.env.TMPDIR;
+  try {
+    delete process.env.MITTICLOUD_EMBEDDED;
+    assert.equal('TMPDIR' in buildEnv(null, 7401), false, 'desktop: TMPDIR untouched');
+
+    process.env.MITTICLOUD_EMBEDDED = '1';
+    const env = buildEnv(null, 7402);
+    assert.ok(env.TMPDIR, 'embedded: TMPDIR is set');
+    assert.equal(fs.existsSync(env.TMPDIR), true, 'embedded: TMPDIR exists: ' + env.TMPDIR);
+
+    process.env.TMPDIR = '/explicit/tmp';
+    assert.equal(buildEnv(null, 7403).TMPDIR, '/explicit/tmp', 'explicit TMPDIR wins');
+  } finally {
+    if (savedTmp === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmp;
+    if (savedEmbedded === undefined) delete process.env.MITTICLOUD_EMBEDDED;
+    else process.env.MITTICLOUD_EMBEDDED = savedEmbedded;
+  }
+});
+
 // On the phone the runtime is libnode.so, which Android will not execve() — a
 // child started that way dies with SIGABRT (verified on the device). The APK
 // ships libmittinode.so in its native library folder and points

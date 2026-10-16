@@ -19,7 +19,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { DATA_DIR, VAULT_DIR, resolveSafe } from './paths.js';
+import { DATA_DIR, VAULT_DIR, isEmbeddedAndroid, resolveSafe, shellTmpDir } from './paths.js';
+export { isEmbeddedAndroid };
 import { getToken, isLocked } from './auth.js';
 import { nodeRuntime } from './apprunner.js';
 
@@ -211,11 +212,18 @@ async function statFile(reqid, p) {
   }
 }
 
-// True when this server runs inside the Android app (the APK sets this before
-// node starts). Android is not a normal Linux: there is no /bin/sh and the
-// core utils live under /system/bin, so the shell layer has to adapt.
-export function isEmbeddedAndroid() {
-  return process.platform === 'android' || process.env.MITTICLOUD_EMBEDDED === '1';
+// The environment a login's children run with: a HOME the client can deploy
+// into, a PATH that finds the platform utils, and — on embedded Android — a
+// TMPDIR the app can actually write (there is no /tmp there; without this a
+// child needing a socket or scratch file dies, as ZCode's agent did 114 times
+// on `listen EACCES /tmp/znr-*.sock`). An explicitly set TMPDIR is respected.
+export function shellEnv() {
+  const env = { ...process.env, HOME: VAULT_DIR, PATH: shellPath() };
+  if (!env.TMPDIR) {
+    const tmp = shellTmpDir();
+    if (tmp) env.TMPDIR = tmp;
+  }
+  return env;
 }
 
 // The shell a login runs. Resolve a real one instead of assuming /bin/sh, which
@@ -351,7 +359,7 @@ function shellCwd() {
 // reflow the terminal.
 function runChild(channel, { command = null, pty = null } = {}) {
   const rewritten = redirectNodeInvocation(command);
-  const baseEnv = { ...process.env, HOME: VAULT_DIR, PATH: shellPath() };
+  const baseEnv = shellEnv();
   const helper = pty ? ptyHelper() : null;
 
   if (pty && helper) {

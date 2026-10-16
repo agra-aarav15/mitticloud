@@ -2,6 +2,7 @@
 // Every route resolves user-supplied relative paths through resolveSafe()
 // so nothing outside the vault root can be read or written.
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const LIB_DIR = path.dirname(fileURLToPath(import.meta.url)); // .../server/lib
@@ -44,4 +45,30 @@ export function resolveSafe(rel, root) {
     throw new PathError('Path escapes the vault root');
   }
   return abs;
+}
+
+// True when this server runs inside the Android app (the APK sets this before
+// node starts). Android is not a normal Linux: there is no /bin/sh and the
+// core utils live under /system/bin, so the shell layer has to adapt.
+export function isEmbeddedAndroid() {
+  return process.platform === 'android' || process.env.MITTICLOUD_EMBEDDED === '1';
+}
+
+// A writable temp dir for children on embedded Android. There is no /tmp on
+// Android, so a child's os.tmpdir() falls back to the literal "/tmp" — which
+// the app cannot write — and anything needing a socket or scratch file dies
+// (measured: ZCode's agent crash-looped 114 times on
+// `listen EACCES /tmp/znr-*.sock`). data/tmp is app-private and always
+// writable. Returns null on a desktop, where the host tmpdir is left alone,
+// and when the folder cannot be created the caller must not set TMPDIR at all
+// (an unusable TMPDIR is worse than none: libuv trusts it blindly).
+export function shellTmpDir() {
+  if (!isEmbeddedAndroid()) return null;
+  const dir = path.join(DATA_DIR, 'tmp');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    return null;
+  }
+  return dir;
 }
