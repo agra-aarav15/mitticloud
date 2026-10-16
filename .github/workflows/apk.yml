@@ -127,7 +127,7 @@ jobs:
           # bundle. It is a PIE executable, so it ships under a .so name in the
           # native-library folder (the one place Android lets an app execute).
           set -e
-          VER="2026.10.0"
+          VER="2026.10.1"
           BASE="https://packages.termux.dev/apt/termux-main/pool/main/c/cloudflared"
           NDK="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
           STRIP=""
