@@ -380,6 +380,99 @@ test('the worker wrapper ships beside the shim and forwards stdio', () => {
   execFileSync(process.execPath, ['--check', wrapper], { encoding: 'utf8' });
 });
 
+test('the agent-entry reroute matches the deployed entry and nothing else', () => {
+  // The server spawns `.../server/agents/glm/zcode-agent` per session; on the
+  // phone that spawn dies with EACCES, so the shim reroutes it to the sibling
+  // bundle on the phone's own node. Read the pattern from the shim so this test
+  // cannot drift from the code it guards.
+  const src = fs.readFileSync(NODE22_SHIM, 'utf8');
+  const m = src.match(/const AGENT_BIN_RE = (\/.*\/);/);
+  assert.ok(m, 'AGENT_BIN_RE is present in the shim');
+  const agentRe = eval(m[1]);
+
+  const shouldMatch = [
+    '/data/data/in.mitticloud.app/files/mitti/vault/.zcode/server/agents/glm/zcode-agent',
+    'C:\\Users\\x\\.zcode\\server\\agents\\glm\\zcode-agent.exe',
+    '/x/zcode-agent',
+  ];
+  const mustNotMatch = [
+    '/x/zcode-agent.cjs', // the bundle, not the entry — handled by BUNDLE_RE
+    '/home/u/.zcode/server/zcode-server.cjs', // the server itself
+    '/x/my-zcode-agent-backup', // lookalikes are not the entry
+    '/x/zcode-agent-old',
+    '/x/not-the-agent',
+  ];
+  for (const p of shouldMatch) assert.ok(agentRe.test(p), 'should match: ' + p);
+  for (const p of mustNotMatch) assert.ok(!agentRe.test(p), 'must NOT match: ' + p);
+});
+
+test('spawning the agent entry runs the sibling bundle, never the vault file', () => {
+  // The exact phone failure, reproduced anywhere: the "entry" is garbage that
+  // cannot be executed (spawn would die EACCES/ENOENT), the sibling bundle is a
+  // tiny script. With the shim loaded in Android mode, spawning the entry must
+  // run the bundle on a worker — marker printed, session args passed through.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mitti-agententry-'));
+  try {
+    const entry = path.join(dir, 'zcode-agent');
+    fs.writeFileSync(entry, 'this is not executable and must never be execed\n');
+    fs.writeFileSync(
+      path.join(dir, 'zcode.cjs'),
+      'process.stdout.write("AGENT_BUNDLE_RAN argv=" + process.argv.slice(2).join(",") + "\\n");\n'
+    );
+    const driver = path.join(dir, 'driver.js');
+    fs.writeFileSync(
+      driver,
+      'const { spawn } = require("node:child_process");\n' +
+        'const child = spawn(process.argv[2], ["app-server", "--stdio"], { stdio: ["ignore", "pipe", "pipe"] });\n' +
+        'child.on("error", (e) => { process.stdout.write("SPAWN_ERROR:" + e.code + "\\n"); });\n' +
+        'child.stdout.on("data", (d) => process.stdout.write(d));\n'
+    );
+    const out = execFileSync(process.execPath, ['--require=' + NODE22_SHIM, driver, entry], {
+      encoding: 'utf8',
+      timeout: 60000,
+      env: { ...process.env, MITTICLOUD_PLATFORM: 'android' },
+    });
+    assert.ok(
+      out.includes('AGENT_BUNDLE_RAN argv=app-server,--stdio'),
+      'the bundle ran with the session args; got: ' + JSON.stringify(out)
+    );
+    assert.ok(!out.includes('SPAWN_ERROR'), 'no spawn error; got: ' + JSON.stringify(out));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('without the sibling bundle the agent-entry spawn is left alone', () => {
+  // Honest fallback: an entry with no zcode.cjs beside it is some future layout
+  // the shim does not understand, so the original spawn must run untouched —
+  // here it fails at spawn level, exactly as it would without the shim.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mitti-agententry-'));
+  try {
+    const entry = path.join(dir, 'zcode-agent');
+    fs.writeFileSync(entry, 'not executable\n');
+    const driver = path.join(dir, 'driver.js');
+    fs.writeFileSync(
+      driver,
+      'const { spawn } = require("node:child_process");\n' +
+        'const child = spawn(process.argv[2], ["app-server", "--stdio"], { stdio: ["ignore", "pipe", "pipe"] });\n' +
+        'child.on("error", (e) => { process.stdout.write("SPAWN_ERROR:" + e.code + "\\n"); process.exit(0); });\n' +
+        'child.stdout.on("data", (d) => process.stdout.write(d));\n' +
+        'child.on("close", (c) => { process.stdout.write("EXIT:" + c + "\\n"); });\n'
+    );
+    const out = execFileSync(process.execPath, ['--require=' + NODE22_SHIM, driver, entry], {
+      encoding: 'utf8',
+      timeout: 60000,
+      env: { ...process.env, MITTICLOUD_PLATFORM: 'android' },
+    });
+    assert.ok(
+      /SPAWN_ERROR:(EACCES|ENOENT)/.test(out),
+      'the untouched spawn fails at spawn level; got: ' + JSON.stringify(out)
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- the ICU-less gap: ZCode's server uses \p{...} regexes and Intl, neither of
 // which exists on nodejs-mobile's Node 18. Both are only reachable when the shim
 // runs on a Node that has no ICU, which every dev machine here does — so the

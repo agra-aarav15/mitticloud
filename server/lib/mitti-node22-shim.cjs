@@ -402,6 +402,16 @@ const WRAPPER = (() => {
 // the agent, which the server spawns per session, is rerouted.
 const BUNDLE_RE = /(^|[/\\])zcode(?:[-_.](?!server\b)[^/\\]*)?\.cjs$/;
 
+// Match the agent ENTRY the server spawns per session: the deployed
+// `.../server/agents/glm/zcode-agent`. That file is a `#!/bin/sh` wrapper the
+// desktop writes (exec "$runtime_root/node" ... zcode.cjs), but on this phone
+// spawning it dies with EACCES — it is a vault file the sandbox refuses to
+// exec. The fix below never execs it: when the sibling zcode.cjs bundle is
+// present, the spawn is rewritten to run the bundle on this process's own node
+// (which is already the phone's Node) via the worker wrapper. When the sibling
+// is missing the spawn is left alone, so a future layout fails honestly.
+const AGENT_BIN_RE = /(^|[/\\])zcode-agent(\.exe)?$/;
+
 function isAndroidArm() {
   // nodejs-mobile reports process.platform === 'android' on the phone. The env
   // var is a fallback for a build that reports 'linux' instead.
@@ -410,6 +420,8 @@ function isAndroidArm() {
 
 if (WRAPPER && isAndroidArm()) {
   const childProcess = require('node:child_process');
+  const nodePath = require('node:path');
+  const nodeFs = require('node:fs');
 
   // Given a spawn's (command, args), decide whether it launches the client
   // bundle, and if so hand back the launch rewritten to go through the wrapper.
@@ -422,10 +434,42 @@ if (WRAPPER && isAndroidArm()) {
     return args.slice(0, idx).concat([WRAPPER], args.slice(idx));
   }
 
+  // Given a spawn's COMMAND, decide whether it is the agent entry the server
+  // launches per session — and if its sibling bundle is there, hand back the
+  // whole call rewritten to run the bundle on this process's own node through
+  // the wrapper. The vault file itself is never executed.
+  function redirectCommand(command, args) {
+    if (typeof command !== 'string' || !AGENT_BIN_RE.test(command)) return null;
+    const bundle = nodePath.join(nodePath.dirname(command), 'zcode.cjs');
+    if (!nodeFs.existsSync(bundle)) {
+      warnOnce(
+        'agent entry without its bundle',
+        command + ' has no sibling zcode.cjs — the spawn is left alone and may fail'
+      );
+      return null;
+    }
+    warnOnce(
+      'agent entry rerouted',
+      'spawn of ' + command + ' runs the sibling bundle instead, because vault files cannot be execed here'
+    );
+    return {
+      command: process.execPath,
+      args: [WRAPPER, bundle].concat(Array.isArray(args) ? args : []),
+    };
+  }
+
   for (const name of ['spawn', 'execFile', 'fork', 'execFileSync']) {
     const original = childProcess[name];
     if (typeof original !== 'function') continue;
     childProcess[name] = function patched(...callArgs) {
+      const rerouted = redirectCommand(callArgs[0], callArgs[1]);
+      if (rerouted) {
+        warnOnce(
+          'client bundle on a worker thread',
+          'the agent runs on a worker, because on this platform it faults on the main thread'
+        );
+        return original.call(this, rerouted.command, rerouted.args, ...callArgs.slice(2));
+      }
       const args = callArgs[1];
       const newArgs = redirect(args);
       if (newArgs) {

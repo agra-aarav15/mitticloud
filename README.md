@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.19.0-orange)
+![Release](https://img.shields.io/badge/release-v0.19.1-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,12 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.19.1
+
+- **The agent actually starts now — v0.19.0 fixed a crash the agent never got far enough to hit.** The screenshot showed `write EPIPE` still in Sync Plugins with v0.19.0 on the phone, and ZCode's own log named the real killer one line above it: `spawn …/server/agents/glm/zcode-agent EACCES`. The server does not spawn the agent bundle directly — it spawns a **deployed entry** (`agents/glm/zcode-agent`, a `#!/bin/sh` wrapper the desktop writes with no exec bit in the deploy path), and on Android spawning that vault file dies with EACCES. The v0.19.0 reroute only looked at spawn **arguments**, but the entry travels as the spawn **command** — so it never fired. The shim now matches the command itself: when the entry's sibling `zcode.cjs` bundle is present, the spawn is rewritten to run that bundle on the phone's own Node through the worker wrapper — the vault file is never execed, and the worker thread still sidesteps the arm64 main-thread SIGSEGV. Without the sibling bundle the spawn is left untouched, so a future layout fails honestly instead of silently.
+  - **Why one dead process broke Sync Plugins:** with the agent unspawnable, every agent RPC — `sendConversationCommandV4`, `readWorkspacePresentation`, and the `getPluginsOverview` the sync dialog needs — dies writing to a dead pipe. That is the `write EPIPE`.
+  - **Honest limits, unchanged:** in-memory sqlite, approximate Unicode ranges, local-time Intl — see v0.19.0. The agent's own children (search tools, terminals) are the next wall if they turn out to be Linux binaries Android cannot run; this release gets the agent itself booted.
 
 ## What you get in v0.19.0
 
