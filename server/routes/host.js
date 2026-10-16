@@ -54,9 +54,17 @@ function defaultTunnelBin() {
 
 // --- tunnel state (one at a time) ---
 
-let tunnel = null; // { mode:'quick'|'token', child, url, startedAt, log:[] }
+// { mode:'quick'|'token', bin, args, child, url, startedAt, log, failed,
+//   restarts, timer, stopping }
+let tunnel = null;
 
 const LOG_CAP = 40;
+// A 24/7 link must come back by itself: cloudflared can drop on a network blip
+// or when Android naps the radio. Restart on this ladder, then keep retrying
+// every 30 s for as long as the user wants the link up.
+const TUNNEL_BACKOFF_MS = [2000, 5000, 15000, 30000];
+const TUNNEL_STEADY_MS = 30000;
+const TUNNEL_HEALTHY_MS = 60000; // up this long -> the ladder starts over
 
 function pushLog(line) {
   if (!tunnel) return;
@@ -78,6 +86,8 @@ function tunnelStatus() {
     startedAt: tunnel.startedAt,
     log: tunnel.log.slice(-12),
     bundled: Boolean(bundledTunnelBin()),
+    restarts: tunnel.restarts || 0,
+    ...(tunnel.timer ? { restarting: true } : {}),
     ...(tunnel.failed ? { failed: tunnel.failed } : {}),
     ...(tunnel.child.exitCode !== null && !tunnel.failed
       ? { exitCode: tunnel.child.exitCode }
@@ -85,7 +95,36 @@ function tunnelStatus() {
   };
 }
 
-function startCloudflared(bin, args, mode) {
+/**
+ * Bring a dropped tunnel back. Skipped when the user asked to stop, when the
+ * binary never started (a bad path is not fixed by retrying), or when a restart
+ * is already queued. After the ladder is spent it keeps trying every 30 s, so a
+ * link the user turned on stays up through network blips without a second tap.
+ */
+function scheduleTunnelRestart() {
+  if (!tunnel || tunnel.stopping || tunnel.failed || tunnel.timer) return;
+  // a tunnel that stayed up a while starts its ladder over — one blip after an
+  // hour of service should not inherit an old retry count
+  if (Date.now() - Date.parse(tunnel.startedAt) >= TUNNEL_HEALTHY_MS) tunnel.restarts = 0;
+  const n = tunnel.restarts;
+  const delay = n < TUNNEL_BACKOFF_MS.length ? TUNNEL_BACKOFF_MS[n] : TUNNEL_STEADY_MS;
+  tunnel.restarts = n + 1;
+  pushLog(`[the tunnel dropped — bringing it back in ${Math.round(delay / 1000)} s]`);
+  const self = tunnel; // a fresh start replaces `tunnel` — do not respawn the old one
+  tunnel.timer = setTimeout(() => {
+    if (!tunnel || tunnel !== self || self.stopping) return;
+    tunnel.timer = null;
+    const { bin, args, mode, log, url, restarts } = tunnel;
+    try {
+      startCloudflared(bin, args, mode, { log, url, restarts });
+    } catch (err) {
+      pushLog(`[could not restart the tunnel: ${err.message}]`);
+    }
+  }, delay);
+  tunnel.timer.unref?.();
+}
+
+function startCloudflared(bin, args, mode, carry = null) {
   // The bin string becomes a process name — refuse anything process-like.
   // The bundled path is built from the APK's own native-library dir (Android
   // puts "~" and "=" in those paths), so it skips the user-input whitelist.
@@ -93,16 +132,26 @@ function startCloudflared(bin, args, mode) {
   if (!isBundled && !/^[a-z0-9_\-.:\\\/() ]+$/i.test(bin)) {
     throw Object.assign(new Error('cloudflared path looks wrong — use a plain path or "cloudflared"'), { status: 400 });
   }
+  // A pending auto-restart belongs to the tunnel being replaced — drop it first,
+  // so a user tapping "start" never ends up with two cloudflared processes.
+  if (tunnel && tunnel.timer) {
+    clearTimeout(tunnel.timer);
+    tunnel.timer = null;
+  }
+  // Carry the link's history across a restart: the same log, URL and retry count.
+  const log = carry ? carry.log : [];
+  const url = carry ? carry.url : null;
+  const restarts = carry ? carry.restarts : 0;
   let child;
   try {
     child = spawn(bin, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
     // missing binary throws synchronously — surface it as a failed tunnel,
     // not a 500 the UI cannot render
-    tunnel = { mode, child: { exitCode: 1 }, url: null, startedAt: new Date().toISOString(), log: [], failed: err.message };
+    tunnel = { mode, bin, args, child: { exitCode: 1 }, url, startedAt: new Date().toISOString(), log, failed: err.message, restarts, timer: null, stopping: false };
     return null;
   }
-  tunnel = { mode, child, url: null, startedAt: new Date().toISOString(), log: [], failed: null };
+  tunnel = { mode, bin, args, child, url, startedAt: new Date().toISOString(), log, failed: null, restarts, timer: null, stopping: false };
   const onData = (buf) =>
     String(buf)
       .split(/\r?\n/)
@@ -116,7 +165,10 @@ function startCloudflared(bin, args, mode) {
     if (tunnel) tunnel.failed = err.message;
     pushLog(`[cloudflared could not start: ${err.message}]`);
   });
-  child.on('exit', (code) => pushLog(`[cloudflared exited with code ${code}]`));
+  child.on('exit', (code) => {
+    pushLog(`[cloudflared exited with code ${code}]`);
+    scheduleTunnelRestart();
+  });
   return child;
 }
 
@@ -168,6 +220,14 @@ router.post('/tunnel/token', async (req, res, next) => {
 });
 
 router.post('/tunnel/stop', (req, res) => {
+  if (tunnel) {
+    // stop means stop: cancel any pending auto-restart so the link stays down
+    tunnel.stopping = true;
+    if (tunnel.timer) {
+      clearTimeout(tunnel.timer);
+      tunnel.timer = null;
+    }
+  }
   if (!tunnel || tunnel.child.exitCode !== null) {
     return res.json({ ok: true, ...tunnelStatus() });
   }

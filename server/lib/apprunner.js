@@ -16,41 +16,32 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 import { DATA_DIR, FILES_DIR, PathError, shellTmpDir } from './paths.js';
-import { spawnRequestFor } from './runner.js';
 import { classifyProject } from './buildqueue.js';
 import { fileURLToPath } from 'node:url';
 
-const STATIC_SERVER = fileURLToPath(new URL('./staticServe.js', import.meta.url));
+import { nodeRuntime } from './nodeRuntime.js';
+import { installRequest, runRequest, versionRequest, packageEnv, packageTool } from './pkgmgr.js';
 
-/**
- * The Node program to spawn for a hosted app.
- *
- * On a desktop this is process.execPath — a real executable. On the phone it is
- * NOT: the runtime is libnode.so, a shared library Android refuses to execve()
- * (a child started that way dies with SIGABRT). The APK therefore also ships
- * libmittinode.so, a real executable that loads its sibling libnode.so, and the
- * app passes its native library folder in MITTICLOUD_NATIVE_DIR. That folder is
- * the one place Android lets an app execute from.
- */
-export function nodeRuntime() {
-  const dir = process.env.MITTICLOUD_NATIVE_DIR;
-  if (dir) {
-    const native = path.join(dir, 'libmittinode.so');
-    try {
-      if (fs.statSync(native).isFile()) return native;
-    } catch {
-      /* fall through to the desktop runtime */
-    }
-  }
-  return process.execPath;
-}
+// The Node program a hosted app runs on (the APK launcher on the phone, a real
+// executable on the desktop). Re-exported here: the SSH layer and existing
+// callers import it from apprunner.
+export { nodeRuntime };
+
+const STATIC_SERVER = fileURLToPath(new URL('./staticServe.js', import.meta.url));
 
 export const APPS_DIR = path.join(FILES_DIR, 'apps');
 export const REGISTRY_FILE = path.join(DATA_DIR, 'apps.json');
 const PORT_MIN = 7401;
 const PORT_MAX = 7499;
-const START_TIMEOUT_MS = 5000;
-const INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
+// How long to wait for an app to answer on its port before calling it dead.
+// 5 s is enough for a plain `node server.js`, but a Next.js app cold-boots
+// (loads the wasm SWC, compiles, opens the port) far slower on a phone — the
+// old 5 s limit killed it mid-boot, which is exactly why Next looked unhostable.
+const START_TIMEOUT_MS = 20000;
+const SLOW_START_KINDS = new Set(['next', 'custom']);
+const SLOW_START_TIMEOUT_MS = 60000;
+const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
+const BUILD_TIMEOUT_MS = 20 * 60 * 1000;
 const LOG_CAP = 200;
 const MIN_FREE_MB_TO_START = 300;
 const RESTART_BACKOFF_MS = [1000, 3000, 9000];
@@ -269,6 +260,22 @@ async function waitForHttp(port, deadlineMs) {
 }
 
 /**
+ * Spawn a hosted child. On POSIX it leads its own process group (detached), so a
+ * stop or a crash can take the WHOLE tree with it — an npm/yarn install
+ * grandchild included. Without that, killing a building app left the install
+ * running in the background (proven on the phone: a killed `yarn install` kept
+ * downloading, filling storage).
+ */
+function spawnApp(file, args, opts = {}) {
+  return spawn(file, args, {
+    windowsHide: true,
+    detached: process.platform !== 'win32',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    ...opts,
+  });
+}
+
+/**
  * Run an owner-supplied start command — the "any language" door. The command goes
  * to the platform shell exactly as typed, in the app folder, with PORT and the
  * app's env already set, so python, php, a compiled go binary or anything else
@@ -280,12 +287,7 @@ function runCustomCommand(command, dirAbs, childEnv, state) {
       ? { cmd: process.env.ComSpec || 'cmd.exe', args: ['/d', '/s', '/c', command] }
       : { cmd: process.env.SHELL || '/bin/sh', args: ['-c', command] };
   pushLog(state, `$ ${command}`);
-  return spawn(sh.cmd, sh.args, {
-    cwd: dirAbs,
-    env: childEnv,
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  return spawnApp(sh.cmd, sh.args, { cwd: dirAbs, env: childEnv });
 }
 
 /** Start (or restart) an app. Resolves { port, entry } once it is serving. */
@@ -377,31 +379,30 @@ export async function startApp(name, { force = false } = {}) {
   // runner.js is only for .cmd shims like npm, and an absolute execPath with
   // spaces ("C:\Program Files\...") does not survive the cmd quoting round-trip)
   let child;
-  const childEnv = buildEnv(rec && rec.env, port);
+  // The runner needs a real HOME and cache on the phone: the bundled Yarn keeps
+  // its config and cache there and refuses to write without HOME.
+  const childEnv = packageEnv(buildEnv(rec && rec.env, port), {
+    home: dirAbs,
+    cache: path.join(DATA_DIR, 'yarn-cache'),
+  });
   if (profile.startKind === 'next') {
-    const req = spawnRequestFor('npm', ['start']);
-    child = spawn(req.file, req.args, {
+    const req = runRequest('start');
+    child = spawnApp(req.file, req.args, {
       cwd: dirAbs,
       env: childEnv,
-      windowsHide: true,
       windowsVerbatimArguments: Boolean(req.windowsVerbatimArguments),
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
   } else if (profile.startKind === 'static') {
-    child = spawn(nodeRuntime(), [STATIC_SERVER, path.join(dirAbs, profile.outputDir)], {
+    child = spawnApp(nodeRuntime(), [STATIC_SERVER, path.join(dirAbs, profile.outputDir)], {
       cwd: dirAbs,
       env: childEnv,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
   } else if (profile.startKind === 'custom') {
     child = runCustomCommand(rec.startCommand, dirAbs, childEnv, state);
   } else {
-    child = spawn(nodeRuntime(), [entry], {
+    child = spawnApp(nodeRuntime(), [entry], {
       cwd: dirAbs,
       env: childEnv,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
   }
   state.child = child;
@@ -447,7 +448,9 @@ export async function startApp(name, { force = false } = {}) {
     }
   });
 
-  const up = await waitForHttp(port, START_TIMEOUT_MS);
+  const startTimeout = SLOW_START_KINDS.has(profile.startKind) ? SLOW_START_TIMEOUT_MS : START_TIMEOUT_MS;
+  const startSecs = Math.round(startTimeout / 1000);
+  const up = await waitForHttp(port, startTimeout);
   if (state.desiredStop) return { port, entry, stopped: true };
   // a "yes" from the port only counts if OUR child is still the one alive —
   // an answer could come from another process that holds the port (proven in
@@ -460,10 +463,10 @@ export async function startApp(name, { force = false } = {}) {
   } else if (state.child) {
     // alive but silent — kill it and say so honestly
     state.state = 'crashed';
-    pushLog(state, `no answer on port ${port} within 5 s — stopped waiting`);
+    pushLog(state, `no answer on port ${port} within ${startSecs} s — stopped waiting`);
     killTree(child, true);
     throw new AppError(
-      `The app did not answer on port ${port} within 5 s. It may listen on a fixed port — ` +
+      `The app did not answer on port ${port} within ${startSecs} s. It may listen on a fixed port — ` +
         `make it read process.env.PORT. Its output is in the logs.`,
       504
     );
@@ -496,10 +499,36 @@ function killTree(child, force = true) {
     t.unref?.();
     return;
   }
+  // POSIX: the child leads its own process group (see spawnApp), so a group
+  // kill reaches the whole tree — an npm/yarn install grandchild included.
+  const sig = force ? 'SIGKILL' : 'SIGTERM';
   try {
-    child.kill(force ? 'SIGKILL' : 'SIGTERM');
+    process.kill(-child.pid, sig);
   } catch {
-    /* already gone */
+    try {
+      child.kill(sig);
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+/**
+ * Signal a whole process group by its leader's pid. The group outlives the
+ * leader (a yarn parent can exit while the `next start` grandchild it spawned
+ * keeps running), so this is called with the pid captured before any exit.
+ * Falls back to the child itself when this platform has no group.
+ */
+function killGroup(pid, signal, child = null) {
+  if (pid == null) return;
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      if (child && child.exitCode == null) child.kill(signal);
+    } catch {
+      /* already gone */
+    }
   }
 }
 
@@ -517,12 +546,13 @@ export function stopApp(name) {
     // the whole tree down now instead of leaving an orphan on the port
     killTree(state.child, true);
   } else {
-    try {
-      state.child.kill('SIGTERM');
-    } catch {
-      /* already gone */
-    }
-    setTimeout(() => killTree(state.child, true), 3000).unref();
+    // POSIX: the child leads its own process group (see spawnApp), so a group
+    // signal reaches its grandchildren too — yarn's `next start` included. The
+    // pid is captured now: the leader may exit on SIGTERM while a grandchild
+    // survives, and the group is still addressable by that pid.
+    const pid = state.child.pid;
+    killGroup(pid, 'SIGTERM', state.child);
+    setTimeout(() => killGroup(pid, 'SIGKILL'), 3000).unref();
   }
   return { stopped: true, wasRunning: true };
 }
@@ -550,11 +580,16 @@ export function installLog(name) {
   return state ? state.installLog || '' : '';
 }
 
-// --- npm install (runs on the deployment, with a live log) ---
+// --- package install / build (runs on the deployment, with a live log) ---
+//
+// "npm" in these names is historical: on the Android app the work is done by the
+// bundled Yarn (see lib/pkgmgr.js). The behaviour the routes and the UI rely on
+// is identical either way.
 
+/** Is a package manager usable here? (npm on PATH, or the bundled Yarn.) */
 export function npmInstallAvailable() {
   return new Promise((resolve) => {
-    const req = spawnRequestFor('npm', ['--version']);
+    const req = versionRequest();
     const child = spawn(req.file, req.args, {
       windowsHide: true,
       windowsVerbatimArguments: Boolean(req.windowsVerbatimArguments),
@@ -565,23 +600,20 @@ export function npmInstallAvailable() {
   });
 }
 
-/**
- * Run an npm command in the app dir and stream it into the install log.
- * `full` installs dev dependencies too — a build needs its build tools.
- */
-export function runNpmInstall(name, { full = false, args = null } = {}) {
+/** One install or build step: run it in the app dir, stream it into the log. */
+function runPkgStep(name, req, timeoutMs, label) {
   validName(name);
   const dirAbs = assertDir(name);
   const state = live.get(name) || { logs: [], installLog: '' };
   live.set(name, state); // so installLog() finds it even before a first start
-  const npmArgs = args || ['install', ...(full ? [] : ['--omit=dev']), '--no-audit', '--no-fund'];
+  const mins = Math.round(timeoutMs / 60000);
   return new Promise((resolve) => {
-    const req = spawnRequestFor('npm', npmArgs);
     const child = spawn(req.file, req.args, {
       cwd: dirAbs,
       windowsHide: true,
       windowsVerbatimArguments: Boolean(req.windowsVerbatimArguments),
-      env: buildEnv(null, 0),
+      detached: process.platform !== 'win32',
+      env: packageEnv(buildEnv(null, 0), { home: dirAbs, cache: path.join(DATA_DIR, 'yarn-cache') }),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
@@ -601,12 +633,12 @@ export function runNpmInstall(name, { full = false, args = null } = {}) {
       resolve({
         ok: false,
         log: out,
-        error: 'npm install timed out after 5 minutes — check the internet connection and try again',
+        error: `${label} timed out after ${mins} minutes — check the internet connection and try again`,
       });
-    }, INSTALL_TIMEOUT_MS);
+    }, timeoutMs);
     child.once('error', (err) => {
       clearTimeout(timer);
-      resolve({ ok: false, log: out, error: `npm could not start: ${err.message}` });
+      resolve({ ok: false, log: out, error: `${packageTool()} could not start: ${err.message}` });
     });
     child.once('exit', (code) => {
       clearTimeout(timer);
@@ -615,15 +647,23 @@ export function runNpmInstall(name, { full = false, args = null } = {}) {
         resolve({
           ok: false,
           log: out,
-          error: `npm install exited with code ${code} — read the install log for the real error`,
+          error: `${label} exited with code ${code} — read the log for the real error`,
         });
     });
   });
 }
 
-/** `npm run build` in the app dir, streamed into the install log. */
+/**
+ * Install dependencies in the app dir. `full` installs dev dependencies too — a
+ * build needs its build tools.
+ */
+export function runNpmInstall(name, { full = false } = {}) {
+  return runPkgStep(name, installRequest({ full }), INSTALL_TIMEOUT_MS, 'install');
+}
+
+/** `npm run build` (the bundled Yarn's `run build` on Android), streamed. */
 export function runNpmBuild(name) {
-  return runNpmInstall(name, { full: true, args: ['run', 'build'] });
+  return runPkgStep(name, runRequest('build'), BUILD_TIMEOUT_MS, 'build');
 }
 
 /**
@@ -643,7 +683,8 @@ export function runCustomInstall(name, command) {
     const child = spawn(sh.cmd, sh.args, {
       cwd: dirAbs,
       windowsHide: true,
-      env: buildEnv(null, 0),
+      detached: process.platform !== 'win32',
+      env: packageEnv(buildEnv(null, 0), { home: dirAbs, cache: path.join(DATA_DIR, 'yarn-cache') }),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
@@ -660,7 +701,7 @@ export function runCustomInstall(name, command) {
       } catch {
         /* gone */
       }
-      resolve({ ok: false, log: out, error: 'the install command timed out after 5 minutes' });
+      resolve({ ok: false, log: out, error: `the install command timed out after ${Math.round(INSTALL_TIMEOUT_MS / 60000)} minutes` });
     }, INSTALL_TIMEOUT_MS);
     child.once('error', (err) => {
       clearTimeout(timer);
@@ -809,7 +850,10 @@ export async function initApps() {
 /** Kill every child — the server's exit hook calls this. Sync, best-effort. */
 export function stopAllApps() {
   for (const [name, state] of live) {
-    if (state.child) killTree(state.child, true);
+    if (state.child) {
+      if (process.platform === 'win32') killTree(state.child, true);
+      else killGroup(state.child.pid, 'SIGKILL', state.child); // whole tree, see spawnApp
+    }
     if (state) {
       state.state = 'stopped';
       pushLog(state, 'stopped (server shut down)');

@@ -180,6 +180,23 @@ jobs:
           rm -rf android/app/src/main/assets/mitti/server/test
           cd android/app/src/main/assets/mitti && npm install --omit=dev --no-audit --no-fund
 
+      - name: Bundle Yarn 1 (the phone runtime has no npm)
+        run: |
+          # The Android runtime ships only libnode.so: `npm` is not on PATH, and
+          # the current npm release SEGFAULTS on it (both proven on the phone).
+          # Yarn 1 does run there, so the APK ships it and a hosted app with
+          # dependencies can install and build. Eleven files, one 5 MB bundle.
+          set -e
+          DEST=android/app/src/main/assets/mitti/bundled-yarn
+          mkdir -p "$DEST"
+          curl -fsSL -o "$RUNNER_TEMP/yarn.tgz" "https://registry.npmjs.org/yarn/-/yarn-1.22.22.tgz"
+          tar xzf "$RUNNER_TEMP/yarn.tgz" -C "$DEST"
+          mv "$DEST/package" "$DEST/yarn"
+          rm -rf "$DEST/yarn/docs" "$DEST/yarn/man"
+          test -f "$DEST/yarn/bin/yarn.js" || { echo "yarn.js missing"; exit 1; }
+          node -p "'bundled yarn ' + require('./$DEST/yarn/package.json').version"
+          node "$DEST/yarn/bin/yarn.js" --version
+
       - name: Restore the release keystore
         env:
           KS_B64: ${{ secrets.MITTI_KEYSTORE_B64 }}
@@ -214,7 +231,8 @@ jobs:
           # and every chat send fails with "Failed to send".
           for f in assets/mitti/server/lib/mitti-sqlite.cjs \
                    assets/mitti/server/lib/mitti-node22-shim.cjs \
-                   assets/mitti/node_modules/node-sqlite3-wasm/dist/node-sqlite3-wasm.wasm; do
+                   assets/mitti/node_modules/node-sqlite3-wasm/dist/node-sqlite3-wasm.wasm \
+                   assets/mitti/bundled-yarn/yarn/bin/yarn.js; do
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "$f" || { echo "APK is missing $f"; exit 1; }
           done
           echo "APK_NAME=MittiCloud-v${VERSION}.apk" >> "$GITHUB_ENV"

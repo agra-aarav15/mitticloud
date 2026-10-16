@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -26,6 +27,7 @@ public class CloudService extends Service {
     private static final int NOTIFICATION_ID = 7333;
 
     private PowerManager.WakeLock wakeLock;
+    private WifiManager.WifiLock wifiLock;
     private static volatile boolean started = false;
 
     public static boolean isRunning() {
@@ -116,6 +118,33 @@ public class CloudService extends Service {
         }
         if (!wakeLock.isHeld()) wakeLock.acquire();
 
+        // A PARTIAL_WAKE_LOCK keeps the CPU running, but the Wi-Fi radio still
+        // powers down when the screen sleeps: after a few idle minutes the SSH
+        // session and the cloudflared tunnel drop. A Wi-Fi lock holds the radio
+        // up for as long as the server runs. Every call is guarded, so a platform
+        // that refuses the lock can never take the server down with it.
+        if (wifiLock == null) {
+            try {
+                WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    int mode = Build.VERSION.SDK_INT >= 29
+                        ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                        : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
+                    wifiLock = wm.createWifiLock(mode, "mitticloud:wifi");
+                    wifiLock.setReferenceCounted(false);
+                }
+            } catch (Exception ignored) {
+                /* no Wi-Fi lock available here — keep serving anyway */
+            }
+        }
+        if (wifiLock != null && !wifiLock.isHeld()) {
+            try {
+                wifiLock.acquire();
+            } catch (Exception ignored) {
+                /* refused this time — the server still runs */
+            }
+        }
+
         if (!started) {
             started = true;
             startNode();
@@ -146,6 +175,13 @@ public class CloudService extends Service {
     public void onDestroy() {
         batteryHandler.removeCallbacks(batteryTick);
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        if (wifiLock != null && wifiLock.isHeld()) {
+            try {
+                wifiLock.release();
+            } catch (Exception ignored) {
+                /* already released */
+            }
+        }
         started = false;
         super.onDestroy();
     }

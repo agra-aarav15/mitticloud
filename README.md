@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.19.3-orange)
+![Release](https://img.shields.io/badge/release-v0.20.0-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,24 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.20.0
+
+- **Two long-standing asterisks, closed.** The remote (phone) workspace dropped its connection after a few idle minutes, and the host feature could not run a Next.js app. Both had concrete, measurable causes — found on the device, not guessed — and both are fixed.
+
+- **The remote stops dropping when the phone is idle.** Three separate things used to end an idle session; all three are now held open:
+  - **The Wi-Fi radio slept.** The 24/7 service held a CPU wake lock but never a Wi-Fi lock, so when the screen turned off Android powered the radio down and took the SSH session and the tunnel with it. The service now holds a Wi-Fi lock (`WIFI_MODE_FULL_LOW_LATENCY`, `...HIGH_PERF` on older Android) for as long as it runs, and releases it on stop. Every call is guarded, so a device that refuses the lock still serves. (Adds the `ACCESS_WIFI_STATE` permission.)
+  - **Nothing prodded the SSH connection.** The embedded SSH server now sends a keepalive every 15 s (four misses, ~60 s, still counts a truly dead peer as dead), so NAT and the client's own idle timer never see a silent connection.
+  - **A dropped tunnel stayed dropped.** `cloudflared` was started once and, if it exited, the app only logged it. There is a watchdog now: an unexpected exit restarts the tunnel on a 2 s / 5 s / 15 s / 30 s ladder, then every 30 s, for as long as the link is on. A tunnel that stayed up a minute starts the ladder over; tapping stop cancels the restart.
+
+- **Hosting any app with dependencies works now — the phone had no npm at all.** "Next.js does not host" was never a Next.js problem. The APK's Node runtime (`nodejs-mobile`) ships only `libnode.so`: **there is no npm on the phone** (`npm` → ENOENT; PATH is only system folders), and the current npm release **segfaults** on that runtime — measured on the device: `node npm-cli.js --version` dies with SIGSEGV while a bare `node -e` runs fine. So a folder with any dependency could never install, and `npm start` could never run.
+  - **The APK now bundles Yarn 1** instead — a single 5 MB pure-JS bundle that **does** run on the phone (verified: `yarn add lodash` installed the package on the device). Every install, build and start that used to call `npm` now calls Yarn through the phone's own Node. On a desktop nothing changes: it still uses `npm` from PATH.
+  - **Next.js works with it, with no native binary.** Next 14 lists `aarch64-linux-android` in its wasm-fallback triples and loads the WebAssembly SWC build on Android automatically (it downloads `@next/swc-wasm-nodejs` on demand), so the glibc `@next/swc-*` binary — which can never run on Android's Bionic — is never needed. It is slower than native, but it builds.
+  - **The 5-second start limit was killing apps mid-boot.** A hosted app had to answer HTTP within 5 s; a phone cold-booting Next — or anything that does work before it listens — was killed and reported as crashed. The wait is now 20 s, and 60 s for `next` and custom commands. Builds get 20 minutes (was 5).
+  - **Stopping an app now takes the whole process tree on Linux/Android too.** On POSIX the runner killed only the direct child, so a killed `yarn install` kept downloading in the background — on the phone it filled storage after the app was "stopped". Children now lead their own process group and a stop kills the group (Windows already used `taskkill /T`).
+  - **Zero-byte files no longer fail a deploy.** The zip/base64 deploy rejected any empty file, which failed the first real Next.js folder upload — real projects ship them (`.gitkeep`, empty package markers). Only a genuinely missing field is an error now.
+
+- **Tests:** 215 (up from 206), still 0 failures.
 
 ## What you get in v0.19.3
 
@@ -141,7 +159,7 @@ Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.m
 - **The APK is phone-verified.** The release build is installed and run on a real OnePlus 6T (Android 11): the server boots, the dashboard loads, the battery reads live, and a hosted Node app runs. Report anything that still misbehaves on your device.
 - **Hosted apps run through a bundled launcher.** Android (API 29+) refuses to execute a file an app can write, so the runner cannot start a script from app storage. The APK ships `libmittinode.so` — a real executable, packaged as a native library so Android extracts it into the executable folder — which loads `libnode.so` and calls `node::Start`. Node runs as the app's own user, with no extra privileges.
 - **Cloudflare Pages hosts static files only.** A running server needs the tunnel for a public link.
-- **Next.js builds run on the device.** They can be slow, and they can fail on a phone with little RAM. A failed build says which step failed.
+- **Hosted apps with dependencies install through a bundled Yarn, not npm.** The phone's Node runtime ships no npm, and npm itself segfaults on it; the APK bundles Yarn 1 and runs it on the phone's own Node (a desktop still uses npm from PATH). Next.js builds use Next's WebAssembly SWC — Android has no native SWC binary — so a build is slower than on a laptop, wants a few hundred MB of free storage for `node_modules`, and can still fail on a phone with very little RAM. A failed install or build says which step failed and streams the log.
 - **ZCode and Cursor run through the app's SSH door.** They upload their own Linux `node` and server, which Android cannot execute; MittiCloud detects that launch and runs their server with the phone's own Node instead. Because that Node 18 is built without ICU, MittiCloud also supplies a `node:sqlite` stand-in, a `\p{...}` regex rewrite and a local-time `Intl` — verified on a real phone with ZCode 3.15.3 (see v0.18.2). Those stand-ins are approximations (see that section); plain SSH and SFTP clients work as-is, and on a VPS nothing changes.
 - **SSH is off by default**, uses port 8022 on a phone (Android blocks port 22 without root), and listens on the Wi-Fi only while it is turned on.
 
@@ -172,7 +190,7 @@ No database, no CDN. The dashboard is pre-built into `public/`, so the server ne
 
 ```bash
 npm install
-npm test          # 187 checks, including a real SSH client against the embedded server
+npm test          # 215 checks, including a real SSH client against the embedded server
 cd web && npm run build   # rebuilds public/ (commit the output)
 ```
 

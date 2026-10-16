@@ -13,7 +13,7 @@ process.env.MITTI_TOKEN = 'correct-horse-battery';
 process.env.MITTI_SSH_PORT = '18022';
 
 const { default: ssh2 } = await import('ssh2');
-const { startSsh, stopSsh, sshState, hostFingerprint, sshPort } = await import('../lib/sshserver.js');
+const { startSsh, stopSsh, sshState, hostFingerprint, sshPort, sshServerConfig, SSH_KEEPALIVE } = await import('../lib/sshserver.js');
 const { VAULT_DIR } = await import('../lib/paths.js');
 
 const PORT = 18022;
@@ -59,6 +59,17 @@ test('the host fingerprint is a stable SHA256 value', () => {
   const b = hostFingerprint();
   assert.match(a, /^SHA256:[A-Za-z0-9+/]+$/);
   assert.equal(a, b);
+});
+
+// The idle-disconnect fix: an SSH session that sends no traffic for a few
+// minutes used to be dropped (NAT, the client, or Android napping the radio).
+// The server must be built with a keepalive so it prods the peer itself.
+test('the server is built with a keepalive so idle sessions survive', () => {
+  const cfg = sshServerConfig('host-key-pem');
+  assert.equal(cfg.keepaliveInterval, SSH_KEEPALIVE.intervalMs);
+  assert.equal(cfg.keepaliveCountMax, SSH_KEEPALIVE.countMax);
+  assert.ok(SSH_KEEPALIVE.intervalMs > 0 && SSH_KEEPALIVE.intervalMs <= 30000, 'a keepalive under 30 s');
+  assert.ok(SSH_KEEPALIVE.countMax >= 3, 'a few missed replies are tolerated before the peer is declared dead');
 });
 
 test('the lock token logs in as the default user', async () => {

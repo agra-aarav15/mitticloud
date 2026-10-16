@@ -549,11 +549,28 @@ function runWithPty(channel, { helper, command, pty, env }) {
   return handle;
 }
 
+/**
+ * SSH keepalive. Without it, an idle session that sends no traffic for a few
+ * minutes is dropped — by NAT, by the client's own idle timer, or by Android
+ * powering the radio down when the screen sleeps. A 15 s keepalive keeps the
+ * path warm; four missed replies (~60 s) still declares a truly dead peer dead.
+ */
+export const SSH_KEEPALIVE = { intervalMs: 15000, countMax: 4 };
+
+/** The ssh2.Server options. Exported so a test can assert the keepalive is set. */
+export function sshServerConfig(hostKey) {
+  return {
+    hostKeys: [hostKey],
+    keepaliveInterval: SSH_KEEPALIVE.intervalMs,
+    keepaliveCountMax: SSH_KEEPALIVE.countMax,
+  };
+}
+
 /** Start the SSH server. Idempotent. Returns the current state. */
 export function startSsh({ host = '127.0.0.1', port = sshPort() } = {}) {
   if (server) return state;
   const hostKey = loadOrCreateHostKey();
-  server = new ssh2.Server({ hostKeys: [hostKey] }, (client) => {
+  server = new ssh2.Server(sshServerConfig(hostKey), (client) => {
     client.on('error', () => {});
     client.on('authentication', (ctx) => {
       if (checkLogin(ctx)) ctx.accept();

@@ -50,7 +50,7 @@ before(async () => {
 after(async () => {
   // belt + braces: remove every app this file may have created (each DELETE
   // also stops the process), kill any leftover child, then tear the rest down
-  for (const name of ['echo-app', 'boom-app', 'list-app', 'editor-app']) {
+  for (const name of ['echo-app', 'boom-app', 'list-app', 'editor-app', 'empty-app', 'tree-app']) {
     try {
       await api('DELETE', `/api/apps/${name}`);
     } catch {
@@ -187,6 +187,77 @@ test('buildEnv: parent secrets scrubbed, PORT always set, app env added, junk ke
 
 test('npmInstallAvailable answers a boolean (no registry contact)', async () => {
   assert.equal(typeof (await npmInstallAvailable()), 'boolean');
+});
+
+// Real projects ship empty files (a blank .gitkeep, an empty package marker).
+// The zip/base64 deploy used to reject every zero-byte file, which failed the
+// whole upload — the first thing that broke a real Next.js folder deploy.
+test('a deploy accepts zero-byte files but still rejects a missing one', async () => {
+  const created = await api('POST', '/api/apps', { name: 'empty-app' });
+  assert.equal(created.status, 200);
+  const up = await api('POST', '/api/apps/empty-app/files', {
+    files: [
+      { path: 'index.js', contentBase64: b64(ECHO_INDEX) },
+      { path: 'package.json', contentBase64: b64(JSON.stringify({ type: 'commonjs' })) },
+      { path: '.gitkeep', contentBase64: '' }, // zero bytes
+      { path: 'empty/__init__.py', contentBase64: '' },
+    ],
+  });
+  assert.equal(up.status, 200, up.raw);
+  assert.equal(up.json.files, 4);
+  const dir = path.join(APPS_DIR, 'empty-app');
+  assert.equal(fs.statSync(path.join(dir, '.gitkeep')).size, 0, 'the empty file exists, empty');
+  assert.equal(fs.existsSync(path.join(dir, 'empty', '__init__.py')), true);
+
+  // A genuinely missing field is still a hard error.
+  const bad = await api('POST', '/api/apps/empty-app/files', { files: [{ path: 'x.js' }] });
+  assert.equal(bad.status, 400);
+  assert.match(bad.json.error, /contentBase64/i);
+});
+
+// A hosted app that spawns a long-lived grandchild: the group-kill proof. A
+// POSIX stop used to SIGTERM only the direct child, so a grandchild (yarn's
+// `next start`, or a build's child) lived on — on the phone it kept downloading
+// after the app was "stopped". The runner now leads a process group and kills it.
+const GRANDCHILD_JS = [
+  "const fs = require('fs');",
+  "const p = require('path').join(__dirname, 'beat.txt');",
+  "let n = 0;",
+  "setInterval(() => fs.writeFileSync(p, String(++n)), 150);",
+].join('\n');
+const TREE_INDEX = [
+  "const { spawn } = require('child_process');",
+  "const path = require('path');",
+  "spawn(process.execPath, [path.join(__dirname, 'child.js')], { stdio: 'ignore' });",
+  "require('http').createServer((q, s) => s.end('up')).listen(process.env.PORT);",
+].join('\n');
+
+const POSIX_ONLY = process.platform === 'win32' ? { skip: 'process groups are POSIX (Windows uses taskkill /T)' } : {};
+
+test('stopping an app kills its whole process group, grandchild included', POSIX_ONLY, async () => {
+  await api('POST', '/api/apps', { name: 'tree-app' });
+  const up = await api('POST', '/api/apps/tree-app/files', {
+    files: [
+      { path: 'index.js', contentBase64: b64(TREE_INDEX) },
+      { path: 'child.js', contentBase64: b64(GRANDCHILD_JS) },
+      { path: 'package.json', contentBase64: b64(JSON.stringify({ type: 'commonjs' })) },
+    ],
+  });
+  assert.equal(up.status, 200, up.raw);
+  const started = await api('POST', '/api/apps/tree-app/start', {});
+  assert.equal(started.status, 200, started.raw);
+
+  const beat = path.join(APPS_DIR, 'tree-app', 'beat.txt');
+  // the grandchild is alive: its counter keeps rising
+  await until(() => fs.existsSync(beat) && Number(fs.readFileSync(beat, 'utf8')) >= 2, 8000);
+  const stopped = await api('POST', '/api/apps/tree-app/stop', {});
+  assert.equal(stopped.status, 200, stopped.raw);
+
+  await new Promise((r) => setTimeout(r, 900));
+  const afterStop = fs.existsSync(beat) ? fs.readFileSync(beat, 'utf8') : 'gone';
+  await new Promise((r) => setTimeout(r, 800));
+  const later = fs.existsSync(beat) ? fs.readFileSync(beat, 'utf8') : 'gone';
+  assert.equal(later, afterStop, 'the grandchild stopped writing — the whole group was killed');
 });
 
 test('buildEnv: TMPDIR is provided on embedded Android, untouched elsewhere', () => {

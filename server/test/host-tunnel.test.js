@@ -65,3 +65,48 @@ test('a native dir holding libmittitunnel.so marks the tunnel bundled', async ()
     delete process.env.MITTICLOUD_NATIVE_DIR;
   }
 });
+
+// The 24/7 fix: cloudflared used to exit and stay dead until the user tapped
+// again. Now an unexpected exit must bring the tunnel back by itself. The Node
+// runtime run with a missing script is a perfect stand-in for a cloudflared that
+// drops: it starts and exits non-zero at once.
+async function postTunnel(route, body) {
+  const res = await fetch(base + route, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: res.status, json: await res.json().catch(() => null) };
+}
+
+test('a tunnel that exits is restarted automatically, and stop cancels it', async () => {
+  delete process.env.MITTICLOUD_NATIVE_DIR;
+  const started = await postTunnel('/api/host/tunnel/quick', { bin: process.execPath });
+  assert.equal(started.status, 200);
+
+  let json = null;
+  for (let i = 0; i < 40; i++) {
+    json = (await getJson('/api/host/tunnel')).json;
+    if (json.restarts >= 1 || json.restarting) break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  assert.ok(json.restarts >= 1 || json.restarting, 'the watchdog queued a restart');
+  assert.ok(
+    json.log.some((l) => /dropped|bringing it back/i.test(l)),
+    'the log says the tunnel dropped and was brought back'
+  );
+
+  await postTunnel('/api/host/tunnel/stop');
+  const stopped = (await getJson('/api/host/tunnel')).json;
+  assert.equal(Boolean(stopped.restarting), false, 'stopping cancels the pending restart');
+});
+
+test('a tunnel whose binary cannot start is marked failed and not retried', async () => {
+  const { status } = await postTunnel('/api/host/tunnel/quick', { bin: 'definitely-not-a-real-binary-xyz' });
+  assert.equal(status, 200);
+  await new Promise((r) => setTimeout(r, 400));
+  const json = (await getJson('/api/host/tunnel')).json;
+  assert.ok(json.failed, 'a missing binary is reported as failed');
+  assert.equal(json.restarts || 0, 0, 'a spawn failure is never retried in a loop');
+  await postTunnel('/api/host/tunnel/stop');
+});

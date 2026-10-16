@@ -79,8 +79,12 @@ function planPaths(files, root) {
     if (!rel || rel.startsWith('/') || rel.split('/').some((s) => s === '' || s === '.' || s === '..')) {
       throw new PathError(`Bad file path: ${rel || '(empty)'}`);
     }
-    const content = typeof f?.contentBase64 === 'string' ? f.contentBase64 : '';
-    if (!content) throw new PathError(`Missing contentBase64 for ${rel}`);
+    const content = typeof f?.contentBase64 === 'string' ? f.contentBase64 : null;
+    // An empty file is legitimate: real projects ship plenty of them (a blank
+    // .gitkeep, an empty config, an empty package marker). Only a MISSING field
+    // is an error — the old `!content` test rejected every zero-byte file and
+    // failed the whole deploy.
+    if (content === null) throw new PathError(`Missing contentBase64 for ${rel}`);
     const buf = Buffer.from(content, 'base64');
     if (buf.length > MAX_UPLOAD_BYTES) throw new PathError(`${rel} is over the size cap`);
     planned.push({ rel, abs: resolveSafe(rel, root), buf });
@@ -235,7 +239,7 @@ router.post('/:name/deploy', async (req, res, next) => {
         setDeployStep(name, 'installing');
         if (!(await npmInstallAvailable())) {
           throw new AppError(
-            'npm is not available on this device — install Node.js/npm, or deploy with install:false'
+            'No package manager on this device — install Node.js with npm, or deploy with install:false'
           );
         }
         install = await runNpmInstall(name, { full: profile.hasBuild });
