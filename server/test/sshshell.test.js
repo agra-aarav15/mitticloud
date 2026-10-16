@@ -324,6 +324,187 @@ test('the sqlite stand-in answers the WAL handshake the client insists on', () =
   assert.equal(out.trim(), 'wal');
 });
 
+// The regression that made every remote send fail: the client's session store
+// INSERTs a session and then SELECTs it straight back to confirm the write. The
+// old stand-in stored nothing, so that check threw `Session not found after
+// write`, which the agent reports as `fault.command.executionFailed` — the
+// desktop's "Failed to send" banner. These tests pin the real behaviour.
+
+test('node:sqlite is a REAL database: a written row reads back', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mitti-sql-'));
+  const dbFile = path.join(dir, 'session.sqlite');
+  try {
+    const out = execFileSync(
+      process.execPath,
+      [
+        '--require',
+        NODE22_SHIM,
+        '-e',
+        `
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(process.argv[1], { timeout: 5000 });
+        db.exec('create table session (id text primary key, title text, time_updated integer)');
+        // the client writes with VARIADIC binds and reads back the same row
+        db.prepare('insert into session (id, title, time_updated) values (?, ?, ?)')
+          .run('sess_1', 'hello', 42);
+        const back = db.prepare('select * from session where id = ?').get('sess_1');
+        const list = db.prepare('select * from session order by time_updated desc, id desc limit ?').all(10);
+        const missing = db.prepare('select * from session where id = ?').get('nope');
+        const upd = db.prepare('update session set time_updated = max(time_updated, ?) where id = ?').run(999, 'sess_1');
+        db.close();
+        // and the data survives a reopen — real file, real persistence
+        const again = new DatabaseSync(process.argv[1]);
+        const persisted = again.prepare('select time_updated from session where id = ?').get('sess_1');
+        again.close();
+        process.stdout.write(JSON.stringify({
+          back: back && back.title,
+          listed: list.length,
+          missing: missing === undefined,   // node:sqlite returns undefined, not null
+          changes: upd.changes,
+          persisted: persisted && persisted.time_updated,
+        }));
+        `,
+        dbFile,
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.deepEqual(JSON.parse(out.trim()), {
+      back: 'hello',
+      listed: 1,
+      missing: true,
+      changes: 1,
+      persisted: 999,
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the sqlite adapter takes named binds, bare or prefixed', () => {
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--require',
+      NODE22_SHIM,
+      '-e',
+      `
+      const { DatabaseSync } = require('node:sqlite');
+      const db = new DatabaseSync(':memory:');
+      db.exec('create table t (id text primary key, v integer)');
+      db.prepare('insert into t (id, v) values (:id, :v)').run({ id: 'a', v: 1 });   // bare
+      db.prepare('insert into t (id, v) values (:id, :v)').run({ ':id': 'b', ':v': 2 }); // prefixed
+      process.stdout.write(JSON.stringify(db.prepare('select id from t order by id').all()));
+      `,
+    ],
+    { encoding: 'utf8' }
+  );
+  assert.deepEqual(JSON.parse(out.trim()), [{ id: 'a' }, { id: 'b' }]);
+});
+
+test('unfinalized statements never lock the database out of DDL or a reopen', () => {
+  // The client prepares statements and never finalizes them. A WASM statement
+  // held open blocks DROP TABLE, VACUUM and reopening the file, so the adapter
+  // must not keep one alive between calls. This is the trap that made the
+  // first prototype fail on the phone.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mitti-lock-'));
+  const dbFile = path.join(dir, 'lock.sqlite');
+  try {
+    const out = execFileSync(
+      process.execPath,
+      [
+        '--require',
+        NODE22_SHIM,
+        '-e',
+        `
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(process.argv[1]);
+        db.exec('create table t (a integer)');
+        db.prepare('insert into t values (?)').run(1);
+        // statements used but never finalized, as the client does
+        db.prepare('select * from t where a = ?').get(1);
+        db.prepare('select * from t').all();
+        for (let i = 0; i < 200; i += 1) db.prepare('select ? as v').get(i);
+        const step = [];
+        try { db.exec('drop table t'); step.push('drop-ok'); } catch (e) { step.push('drop-failed:' + e.message); }
+        db.close();
+        try {
+          const again = new DatabaseSync(process.argv[1]);
+          again.exec('vacuum');
+          step.push('reopen-vacuum-ok');
+          again.close();
+        } catch (e) { step.push('reopen-failed:' + e.message); }
+        process.stdout.write(step.join(' '));
+        `,
+        dbFile,
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(out.trim(), 'drop-ok reopen-vacuum-ok');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the shim adds the ES2023 methods Node 18 lacks (MCP startup needs toSorted)', () => {
+  // On the phone the agent logged `Object.keys(...).toSorted is not a function`
+  // at every boot, which failed MCP startup. The shim installs the missing
+  // methods; the real ones are left alone on a newer host.
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--require',
+      NODE22_SHIM,
+      '-e',
+      `
+      const added = {
+        toSorted: [3,1,2].toSorted((a,b) => a-b),
+        toReversed: [1,2,3].toReversed(),
+        toSpliced: [1,2,3,4].toSpliced(1,2,'x'),
+        with: [1,2,3].with(-1, 9),
+        withResolvers: typeof Promise.withResolvers().promise.then,
+        groupBy: Object.keys(Object.groupBy([1,2,3,4], (n) => (n % 2 ? 'odd' : 'even'))),
+        mapGroupBy: [...Map.groupBy([1,2,3,4], (n) => (n % 2 ? 'odd' : 'even')).keys()],
+        isWellFormed: 'ok'.isWellFormed(),
+      };
+      process.stdout.write(JSON.stringify(added));
+      `,
+    ],
+    { encoding: 'utf8' }
+  );
+  assert.deepEqual(JSON.parse(out.trim()), {
+    toSorted: [1, 2, 3],
+    toReversed: [3, 2, 1],
+    toSpliced: [1, 'x', 4],
+    with: [1, 2, 9],
+    withResolvers: 'function',
+    groupBy: ['odd', 'even'],
+    mapGroupBy: ['odd', 'even'],
+    isWellFormed: true,
+  });
+});
+
+test('the real-SQLite adapter ships with the server and is used, not the old stub', () => {
+  // The APK stages server/ + node_modules, so the adapter and its engine must
+  // both exist next to the shim.
+  const adapter = path.join(path.dirname(NODE22_SHIM), 'mitti-sqlite.cjs');
+  assert.equal(fs.existsSync(adapter), true, 'adapter exists at ' + adapter);
+  const engine = path.join(
+    path.dirname(NODE22_SHIM),
+    '..',
+    '..',
+    'node_modules',
+    'node-sqlite3-wasm',
+    'dist',
+    'node-sqlite3-wasm.wasm'
+  );
+  assert.equal(fs.existsSync(engine), true, 'wasm engine exists at ' + engine);
+  const src = fs.readFileSync(NODE22_SHIM, 'utf8');
+  assert.ok(src.includes("require('./mitti-sqlite.cjs')"), 'the shim uses the adapter');
+  // dependency declared so the APK build installs it
+  const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(NODE22_SHIM), '..', '..', 'package.json'), 'utf8'));
+  assert.ok(pkg.dependencies['node-sqlite3-wasm'], 'node-sqlite3-wasm is a dependency');
+});
+
 test('the shim exposes crypto and node:sea that Node 18 lacks as globals', () => {
   const out = execFileSync(
     process.execPath,

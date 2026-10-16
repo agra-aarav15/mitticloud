@@ -9,7 +9,10 @@
 // completed (exit code 1)":
 //
 //   1. `require("node:sqlite")` — a Node 22.5+ builtin. On Node 18 the require
-//      throws ERR_UNKNOWN_BUILTIN_MODULE and the process exits 1. (fixed below)
+//      throws ERR_UNKNOWN_BUILTIN_MODULE and the process exits 1. It is not
+//      merely a require gap: the client uses it as a REAL database (it writes a
+//      session and reads it straight back), so this now supplies real SQLite
+//      via WebAssembly. See lib/mitti-sqlite.cjs. (fixed below)
 //   2. Unicode property escapes — zcode-server's source contains a regex LITERAL
 //      using \p{L}\p{N}\p{M}\p{S}. V8 can only compile those with ICU, and
 //      nodejs-mobile's Node 18 is built WITHOUT ICU (`process.versions.icu` is
@@ -18,19 +21,25 @@
 //      be rewritten before V8 sees it. (fixed below)
 //   3. `Intl` — absent entirely on the ICU-less build, yet the server calls
 //      Intl.DateTimeFormat for locale/timezone headers and date ranges. (fixed below)
+//   4. ES2023/2024 methods — Node 18 has no Array#toSorted/toReversed/toSpliced/
+//      `with`, no Promise.withResolvers, no Object.groupBy, no Array.fromAsync.
+//      The client's own code uses them, and one of them killed MCP startup on
+//      the phone (`Object.keys(...).toSorted is not a function`), so the shim
+//      installs the missing ones. (fixed below)
 //
 // Loaded with `node --require <this file> zcode-server.cjs`, in front of the
 // script so it also reaches a shell-wrapped launch.
 //
 // WHAT IS HONEST ABOUT IT
-// The node:sqlite stand-in is an in-memory store, not SQLite: ZCode's SQLite-
-// backed task queue and automation history will not survive a restart. The
-// Unicode ranges are explicit approximations of the Unicode classes, not the
-// tables themselves, and the Intl stand-in formats in the device's own local
-// time rather than an arbitrary IANA zone. Everything else — the session, file
-// editing, the agent — works normally. Each substitution says so once on stderr
-// instead of pretending, because a silent no-op would look like it worked while
-// quietly dropping data.
+// SQLite is real (WASM) and rows persist, but it runs in rollback-journal mode
+// while reporting "wal" to satisfy the client's handshake — see
+// lib/mitti-sqlite.cjs for why that is safe here. The Unicode ranges are
+// explicit approximations of the Unicode classes, not the tables themselves,
+// and the Intl stand-in formats in the device's own local time rather than an
+// arbitrary IANA zone. Everything else — the session, file editing, the agent —
+// works normally. Each substitution says so once on stderr instead of
+// pretending, because a silent no-op would look like it worked while quietly
+// dropping data.
 'use strict';
 
 const Module = require('node:module');
@@ -43,78 +52,130 @@ function warnOnce(what, detail) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. `node:sqlite` — a stand-in so the require resolves on Node 18
+// 1. `node:sqlite` — real SQLite for the Node 22 builtin
 // ---------------------------------------------------------------------------
+//
+// This used to be a stand-in that stored nothing. That was not enough: the
+// client's session store INSERTs a session and then SELECTs it back to verify
+// the write, so "nothing stored" became `Session not found after write` —
+// which the agent reports as `fault.command.executionFailed` and the desktop
+// shows as "Failed to send". Now backed by real SQLite compiled to WASM
+// (node-sqlite3-wasm): no native build, and it runs on the phone's arm64
+// Bionic Node 18. See lib/mitti-sqlite.cjs for the details and the two
+// deliberate compromises (journal mode, statement pooling).
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { createSqlite } = require('./mitti-sqlite.cjs');
+const sqlite = createSqlite(warnOnce);
 
-/**
- * A statement that answers the shapes zcode-server uses (run/get/all/iterate).
- * It is not a SQL engine. Two things it must get right, because the client
- * refuses to start otherwise:
- *
- *   * `pragma journal_mode` must read back as "wal". The client runs
- *     `pragma journal_mode = wal`, re-reads it, and throws
- *     "SQLite refused WAL journal mode" unless it sees "wal".
- *   * `pragma journal_mode = wal` (the write form) must not throw.
- *
- * Everything else answers with the honest "nothing stored here": writes report
- * one changed row, reads return empty. That is why the warning below matters —
- * the store keeps nothing across restarts.
- */
-class StatementSync {
-  constructor(sql) {
-    this.source = String(sql || '');
-    this.isJournalModeRead = /^\s*pragma\s+journal_mode\s*;?\s*$/i.test(this.source);
-    this.isJournalModeWrite = /^\s*pragma\s+journal_mode\s*=/i.test(this.source);
-  }
-  run() {
-    if (!this.isJournalModeWrite) {
-      warnOnce('SQLite writes', 'kept in memory only, so task/schedule history will not persist across restarts');
-    }
-    return { changes: 1, lastInsertRowid: 0 };
-  }
-  get() {
-    if (this.isJournalModeRead || this.isJournalModeWrite) return { journal_mode: 'wal' };
-    return undefined;
-  }
-  all() {
-    if (this.isJournalModeRead || this.isJournalModeWrite) return [{ journal_mode: 'wal' }];
-    return [];
-  }
-  iterate() {
-    return [][Symbol.iterator]();
-  }
-  setReadBigInts() {}
-  setAllowBareNamedParameters() {}
+// ---------------------------------------------------------------------------
+// 1a. ES2023/2024 methods Node 18 does not have
+// ---------------------------------------------------------------------------
+//
+// The client is written for Node 20+, so it calls methods the phone's Node 18
+// simply does not define. One of them is fatal rather than cosmetic: MCP
+// startup threw `Object.keys(...).toSorted is not a function` on every boot,
+// which disables the tool servers. Installed only when missing, so a newer
+// host is untouched.
+
+if (typeof Array.prototype.toSorted !== 'function') {
+  Object.defineProperty(Array.prototype, 'toSorted', {
+    value: function toSorted(compareFn) {
+      return [...this].sort(compareFn);
+    },
+    writable: true,
+    configurable: true,
+  });
+  warnOnce('Array.prototype.toSorted', 'added, because this Node is older than 20 (MCP startup needs it)');
 }
-
-/** The `DatabaseSync` shape zcode-server constructs: `new DatabaseSync(path)`. */
-class DatabaseSync {
-  constructor(location) {
-    this.location = location;
-    this.isOpen = true;
-    warnOnce('node:sqlite', 'running in memory only; task/schedule history will not persist across restarts');
-  }
-  exec() {
-    warnOnce('SQLite writes', 'kept in memory only, so task/schedule history will not persist across restarts');
-  }
-  prepare(sql) {
-    return new StatementSync(sql);
-  }
-  close() {
-    this.isOpen = false;
-  }
-  open() {
-    this.isOpen = true;
-  }
-  function() {
-    return undefined;
-  }
-  aggregate() {
-    return undefined;
-  }
+if (typeof Array.prototype.toReversed !== 'function') {
+  Object.defineProperty(Array.prototype, 'toReversed', {
+    value: function toReversed() {
+      return [...this].reverse();
+    },
+    writable: true,
+    configurable: true,
+  });
 }
-
-const sqlite = { DatabaseSync, StatementSync, backup: async () => {} };
+if (typeof Array.prototype.toSpliced !== 'function') {
+  Object.defineProperty(Array.prototype, 'toSpliced', {
+    value: function toSpliced(start, deleteCount, ...items) {
+      const copy = [...this];
+      copy.splice(start, deleteCount === undefined ? copy.length : deleteCount, ...items);
+      return copy;
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+if (typeof Array.prototype.with !== 'function') {
+  Object.defineProperty(Array.prototype, 'with', {
+    value: function with_(index, value) {
+      const copy = [...this];
+      const i = index < 0 ? copy.length + index : index;
+      if (i < 0 || i >= copy.length) throw new RangeError('Invalid index');
+      copy[i] = value;
+      return copy;
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+if (typeof Promise.withResolvers !== 'function') {
+  Object.defineProperty(Promise, 'withResolvers', {
+    value: function withResolvers() {
+      let resolve;
+      let reject;
+      const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+if (typeof Object.groupBy !== 'function') {
+  Object.defineProperty(Object, 'groupBy', {
+    value: function groupBy(items, keyFn) {
+      const out = Object.create(null);
+      let i = 0;
+      for (const item of items) {
+        const key = keyFn(item, i++);
+        (out[key] || (out[key] = [])).push(item);
+      }
+      return out;
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+if (typeof Map.groupBy !== 'function') {
+  Object.defineProperty(Map, 'groupBy', {
+    value: function groupBy(items, keyFn) {
+      const out = new Map();
+      let i = 0;
+      for (const item of items) {
+        const key = keyFn(item, i++);
+        const bucket = out.get(key);
+        if (bucket) bucket.push(item);
+        else out.set(key, [item]);
+      }
+      return out;
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+if (typeof String.prototype.isWellFormed !== 'function') {
+  Object.defineProperty(String.prototype, 'isWellFormed', {
+    value: function isWellFormed() {
+      return !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(this);
+    },
+    writable: true,
+    configurable: true,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // 1b. `globalThis.crypto` — present in Node 19+, absent in Node 18

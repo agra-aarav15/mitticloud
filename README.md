@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.19.2-orange)
+![Release](https://img.shields.io/badge/release-v0.19.3-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,13 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.19.3
+
+- **Sends work: SQLite is real now.** v0.19.1 and v0.19.2 got ZCode's agent *running* on the phone, but every message still failed with "Failed to send — `fault.command.executionFailed`". The phone's own agent log named the real cause, one line deep: `session.persistence.failed — Session not found after write (phase: session_store.create)`. The agent does not merely *read* SQLite — it **writes a session and immediately reads it back to confirm**, and MittiCloud's `node:sqlite` was a stand-in that stored nothing, so the confirmation always failed. That exception carries no reason code, so the agent reported it as the generic `executionFailed`, which the desktop renders as "Failed to send". Every send, every retry.
+  - **The fix is a real SQLite, compiled to WebAssembly** (`node-sqlite3-wasm`): no native build, and it runs on the phone's arm64 Bionic Node 18 — verified on the device, where the exact write-then-read-back check now returns the row. Sessions persist to a real file, so the SQLite-backed task/automation history survives a restart too.
+  - **Two deliberate compromises, stated plainly.** (1) The client refuses to start unless `pragma journal_mode` reports `wal`, and this WASM build has no WAL, so the adapter answers that one pragma itself and reports `wal` while the file actually runs SQLite's rollback journal — safe here because this process is the only connection, and both modes are crash-safe. (2) Statements are not pooled: the client prepares statements and never finalizes them, and a WASM statement held open blocks `DROP TABLE`, `VACUUM` and even reopening the file, so each call prepares and finalizes around itself.
+  - **Node 18's missing ES2023 methods are filled in.** The phone's Node lacks `Array#toSorted`/`toReversed`/`toSpliced`/`with`, `Promise.withResolvers`, `Object.groupBy` and friends, and the agent used them — MCP startup failed on every boot with `Object.keys(...).toSorted is not a function`. The shim installs the missing ones (only when absent, so a newer host is untouched), which brings the tool servers back up.
 
 ## What you get in v0.19.2
 

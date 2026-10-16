@@ -209,6 +209,14 @@ jobs:
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittish.so" || { echo "APK is missing libmittish.so for $abi"; exit 1; }
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "lib/$abi/libmittitunnel.so" || { echo "APK is missing libmittitunnel.so for $abi"; exit 1; }
           done
+          # The SQLite the client needs is real now (WASM): without these three
+          # files, ZCode's session store silently falls back to storing nothing
+          # and every chat send fails with "Failed to send".
+          for f in assets/mitti/server/lib/mitti-sqlite.cjs \
+                   assets/mitti/server/lib/mitti-node22-shim.cjs \
+                   assets/mitti/node_modules/node-sqlite3-wasm/dist/node-sqlite3-wasm.wasm; do
+            unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "$f" || { echo "APK is missing $f"; exit 1; }
+          done
           echo "APK_NAME=MittiCloud-v${VERSION}.apk" >> "$GITHUB_ENV"
 
       - name: Attach the APK to the release

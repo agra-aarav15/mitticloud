@@ -1,6 +1,6 @@
 {
   "name": "mitticloud",
-  "version": "0.19.2",
+  "version": "0.19.3",
   "description": "Your drawer-phone is a cloud now. Free personal cloud (photo vault, file server, status dashboard) for an old Android phone running Termux.",
   "type": "module",
   "main": "server/index.js",
@@ -23,6 +23,7 @@
   "dependencies": {
     "express": "^4.21.2",
     "multer": "^2.0.2",
+    "node-sqlite3-wasm": "^0.8.60",
     "ssh2": "^1.17.0"
   }
 }
