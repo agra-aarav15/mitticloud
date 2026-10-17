@@ -577,6 +577,30 @@ test('the worker reroute targets the agent bundle and never the server', () => {
   for (const p of mustNotMatch) assert.ok(!bundleRe.test(p), 'must NOT match: ' + p);
 });
 
+test('the worker reroute also covers Jest worker children (a `next build` needs them)', () => {
+  // Next.js forks processChild.js as the COMMAND — args[0] is the path, args[1]
+  // is [] — proven by an instrumentation pass on the phone. So the matcher must
+  // hit on the command path, not just inside the args.
+  const src = fs.readFileSync(NODE22_SHIM, 'utf8');
+  const cmdM = src.match(/const JEST_WORKER_CMD_RE = (\/.*\/);/);
+  assert.ok(cmdM, 'JEST_WORKER_CMD_RE is present in the shim');
+  const cmdRe = eval(cmdM[1]);
+  const jestM = src.match(/const JEST_WORKER_RE = (\/.*\/);/);
+  assert.ok(jestM, 'JEST_WORKER_RE is present in the shim');
+  const jestRe = eval(jestM[1]);
+  // command shape: processChild.js is the file being run
+  for (const p of ['/app/node_modules/next/dist/compiled/jest-worker/processChild.js',
+    'C:\\app\\node_modules\\next\\dist\\compiled\\jest-worker\\processChild.js',
+    '/app/node_modules/jest-worker/build/workers/processChild.js']) {
+    assert.ok(cmdRe.test(p), 'command should match: ' + p);
+    assert.ok(jestRe.test(p), 'args should match: ' + p);
+  }
+  for (const p of ['/app/node_modules/next/dist/bin/next', '/x/some-file.js', '/x/jest-worker.cjs']) {
+    assert.ok(!cmdRe.test(p), 'command must NOT match: ' + p);
+    assert.ok(!jestRe.test(p), 'args must NOT match: ' + p);
+  }
+});
+
 test('the worker wrapper ships beside the shim and forwards stdio', () => {
   const wrapper = path.join(path.dirname(NODE22_SHIM), 'mitti-agent-wrapper.cjs');
   assert.equal(fs.existsSync(wrapper), true, 'wrapper exists at ' + wrapper);
@@ -709,6 +733,95 @@ test('on a Node without ICU the shim rewrites \\p{...} so a regex LITERAL parses
       env: { ...process.env, MITTI_FORCE_NO_ICU: '1' },
     });
     assert.equal(out.trim(), 'true true true false', out);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the shim rewrites \\p{...} in code STRINGS (source-as-text module, Function, vm)', () => {
+  // Next.js's bundled edge-runtime ships CODE AS TEXT (url.js.text.js carries
+  // /[$_\p{ID_Start}]/u) and evaluates it — a shape the module-source patch
+  // cannot see on its own, so `next build` still died with "Invalid property
+  // name in character class". The *.text.js rewrite covers the string; Function
+  // and vm cover code handed over directly.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mitti-icu-code-'));
+  const body = [
+    'const re = /^[$_\\p{ID_Start}][$\\u200c\\u200d\\p{ID_Continue}]*$/u;',
+    'return re.test("mitti_9") + " " + re.test("9bad");',
+  ].join('\n');
+  // a "source as text" module: its VALUE is code, evaluated later
+  fs.writeFileSync(path.join(dir, 'codes.text.js'), 'module.exports = ' + JSON.stringify(body) + ';\n');
+  fs.writeFileSync(
+    path.join(dir, 'main.js'),
+    'const src = require("./codes.text.js");\n' +
+      // The rewrite must be visible in the STRING itself. (A dev machine has ICU,
+      // so a regex would compile even unrewritten — asserting the match alone
+      // would prove nothing.)
+      'const rewritten = src.indexOf("\\\\p{") < 0 && src.indexOf("\\\\P{") < 0;\n' +
+      'const viaText = eval("(function(){" + src + "})")();\n' +
+      'const viaFunction = new Function(src)();\n' +
+      'const viaVm = new (require("node:vm").Script)("(function(){" + src + "})()").runInThisContext();\n' +
+      // direct eval must keep its caller scope (global eval is deliberately not patched)
+      'const scopeOk = eval("typeof require");\n' +
+      'process.stdout.write([rewritten, viaText, viaFunction, viaVm, scopeOk].join(" | "));\n'
+  );
+  try {
+    const out = execFileSync(process.execPath, ['--require=' + NODE22_SHIM, path.join(dir, 'main.js')], {
+      encoding: 'utf8',
+      env: { ...process.env, MITTI_FORCE_NO_ICU: '1' },
+    });
+    assert.equal(out.trim(), 'true | true false | true false | true false | function', out);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the shim drops TextDecoder\'s ICU-only options instead of failing (wasm SWC needs it)', () => {
+  // Node without ICU THROWS ERR_NO_ICU for `new TextDecoder('utf-8', { fatal: true })`,
+  // which is what Next.js's wasm SWC binding does while loading — so the wasm
+  // compiler never started and the build fell through to a native android SWC
+  // download that does not exist. A pre-require stands in for that Node so the
+  // fallback is exercised even on a full-ICU host.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mitti-icu-td-'));
+  const fake = path.join(dir, 'no-icu-textdecoder.js');
+  const main = path.join(dir, 'main.js');
+  fs.writeFileSync(
+    fake,
+    'const Real = globalThis.TextDecoder;\n' +
+      'function NoIcuTextDecoder(label, options) {\n' +
+      '  if (options && (options.fatal || options.ignoreBOM)) {\n' +
+      '    const e = new Error("\'fatal\' option is not supported on Node.js compiled without ICU");\n' +
+      '    e.code = "ERR_NO_ICU";\n' +
+      '    throw e;\n' +
+      '  }\n' +
+      '  return new Real(label, options);\n' +
+      '}\n' +
+      'NoIcuTextDecoder.prototype = Real.prototype;\n' +
+      'globalThis.TextDecoder = NoIcuTextDecoder;\n'
+  );
+  fs.writeFileSync(
+    main,
+    'const d = new TextDecoder("utf-8", { fatal: true });\n' +
+      'process.stdout.write("global:" + d.decode(Buffer.from([0x61, 0x62])));\n' +
+      'const u = new (require("util").TextDecoder)("utf-8", { fatal: true });\n' +
+      'process.stdout.write("|util:" + u.decode(Buffer.from([0x63, 0x64])));\n'
+  );
+  const env = { ...process.env, MITTI_FORCE_NO_ICU: '1' };
+  try {
+    // control: without the shim this throws, exactly as it does on the phone
+    let threw = false;
+    try {
+      execFileSync(process.execPath, ['--require=' + fake, main], { encoding: 'utf8', env });
+    } catch {
+      threw = true;
+    }
+    assert.equal(threw, true, 'control: the ICU-less TextDecoder must fail without the shim');
+    // with the shim the ICU-only option is dropped on BOTH global and util's decoder
+    const out = execFileSync(process.execPath, ['--require=' + fake, '--require=' + NODE22_SHIM, main], {
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(out.trim(), 'global:ab|util:cd', out);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

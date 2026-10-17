@@ -13,7 +13,7 @@ small VPS. No subscriptions. No paid server. Your files stay where you put them.
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 ![Node](https://img.shields.io/badge/Node-%3E%3D_20-339933)
 ![APK](https://img.shields.io/badge/Android-APK-3DDC84)
-![Release](https://img.shields.io/badge/release-v0.20.0-orange)
+![Release](https://img.shields.io/badge/release-v0.20.1-orange)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 </div>
@@ -55,6 +55,10 @@ The web app and its APIs are open on your network — they need no token. The on
 Full walkthrough with battery settings: [docs/PHONE-SETUP.md](docs/PHONE-SETUP.md).
 
 ---
+
+## What you get in v0.20.1
+
+- **Next.js finally builds on the phone.** The chain was deep, and every layer was proven on the device rather than guessed: the phone's Node is built **without ICU**, so Next.js's bundled packages could not even PARSE (their p{...} regex literals die at compile time). The shim that already saved ZCode now covers **every** code path — module source, runtime RegExp, Function/vm code strings, and the "source-as-text" files Next's edge-runtime evaluates — plus **212 Unicode property classes** (every alias webpack/the edge-runtime spell, like Uppercase_Letter), loose-case lookup, and BOTH TextDecoders (Node's no-ICU build throws on { fatal: true } — the wasm SWC glue hits exactly that). Hosted-app runs of .bin commands execute the tool's own JS on the phone's node instead of the wrapper Android refuses to exec. jest-worker compile children are rerouted onto worker threads like the agent bundle (same arm64 main-thread fault). The build itself is still heavyweight — a real Next app wants roughly 1.5 GB free and a few minutes.
 
 ## What you get in v0.20.0
 

@@ -20,7 +20,7 @@ import { classifyProject } from './buildqueue.js';
 import { fileURLToPath } from 'node:url';
 
 import { nodeRuntime } from './nodeRuntime.js';
-import { installRequest, runRequest, versionRequest, packageEnv, packageTool } from './pkgmgr.js';
+import { installRequest, runRequest, versionRequest, packageEnv, packageTool, scriptRunRequest } from './pkgmgr.js';
 
 // The Node program a hosted app runs on (the APK launcher on the phone, a real
 // executable on the desktop). Re-exported here: the SSH layer and existing
@@ -386,7 +386,9 @@ export async function startApp(name, { force = false } = {}) {
     cache: path.join(DATA_DIR, 'yarn-cache'),
   });
   if (profile.startKind === 'next') {
-    const req = runRequest('start');
+    // `next start` runs through node_modules/.bin/next, which Android will not
+    // execute — run the bin's own JS on our node instead (see scriptRunRequest).
+    const req = scriptRunRequest(dirAbs, 'start', runRequest('start'));
     child = spawnApp(req.file, req.args, {
       cwd: dirAbs,
       env: childEnv,
@@ -663,7 +665,11 @@ export function runNpmInstall(name, { full = false } = {}) {
 
 /** `npm run build` (the bundled Yarn's `run build` on Android), streamed. */
 export function runNpmBuild(name) {
-  return runPkgStep(name, runRequest('build'), BUILD_TIMEOUT_MS, 'build');
+  validName(name);
+  const dirAbs = assertDir(name);
+  // `next build` goes through node_modules/.bin/next, which Android refuses to
+  // execute — run the bin's own JS on our node when it is a JS entry point.
+  return runPkgStep(name, scriptRunRequest(dirAbs, 'build', runRequest('build')), BUILD_TIMEOUT_MS, 'build');
 }
 
 /**

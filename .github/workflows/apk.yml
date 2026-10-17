@@ -231,6 +231,7 @@ jobs:
           # and every chat send fails with "Failed to send".
           for f in assets/mitti/server/lib/mitti-sqlite.cjs \
                    assets/mitti/server/lib/mitti-node22-shim.cjs \
+                   assets/mitti/server/lib/mitti-fork-wrapper.cjs \
                    assets/mitti/node_modules/node-sqlite3-wasm/dist/node-sqlite3-wasm.wasm \
                    assets/mitti/bundled-yarn/yarn/bin/yarn.js; do
             unzip -l "MittiCloud-v${VERSION}.apk" | grep -q "$f" || { echo "APK is missing $f"; exit 1; }

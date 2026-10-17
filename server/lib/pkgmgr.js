@@ -18,6 +18,24 @@ import { nodeRuntime } from './nodeRuntime.js';
 import { spawnRequestFor } from './runner.js';
 
 const LIB_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SHIM_FILE = path.join(LIB_DIR, 'mitti-node22-shim.cjs');
+
+/**
+ * Extra flags for running a JS tool on THIS host's own node. The phone's Node is
+ * built without ICU, so any package whose source carries a `\p{...}` regex
+ * literal fails to PARSE (Next.js's bundled zod and edge-runtime both do). The
+ * shim — which already rewrites those escapes for the client's own servers —
+ * fixes it. A host with ICU needs nothing.
+ */
+function hostNodeFlags() {
+  if (process.versions.icu) return [];
+  try {
+    if (!fs.statSync(SHIM_FILE).isFile()) return [];
+  } catch {
+    return [];
+  }
+  return [`--require=${SHIM_FILE}`];
+}
 
 /** The app root (where server/, public/ and bundled-yarn/ live side by side). */
 export function appRoot() {
@@ -99,4 +117,51 @@ export function runRequest(script, extraArgs = []) {
     return { file: nodeRuntime(), args: [bundledYarnPath(), 'run', script, ...extraArgs] };
   }
   return spawnRequestFor('npm', ['run', script, ...extraArgs]);
+}
+
+/** True when a file is a JS entry point node can run (a node shebang, or .js). */
+export function looksLikeNodeScript(file) {
+  if (/\.(c|m)?js$/i.test(file)) return true;
+  try {
+    const fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(96);
+    const n = fs.readSync(fd, buf, 0, 96, 0);
+    fs.closeSync(fd);
+    return /^#![^\n]*\bnode\b/.test(buf.subarray(0, n).toString('utf8'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A request that runs one of the app's package scripts the way Android allows.
+ *
+ * A package script like `next build` is run by the manager through the wrapper
+ * `node_modules/.bin/next`, and Android REFUSES to execute a file in an app's
+ * own writable storage — the build dies with `.bin/next: Permission denied`
+ * (measured on the phone). So when the script's tool resolves to a JavaScript
+ * entry point, run THAT file on our own node instead of the wrapper; it is what
+ * the wrapper does anyway. Falls back to the normal manager request whenever the
+ * tool is missing or is a native binary (which must keep its own path).
+ */
+export function scriptRunRequest(appDir, script, fallback) {
+  let pkg = null;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8'));
+  } catch {
+    return fallback;
+  }
+  const cmd = pkg && pkg.scripts && typeof pkg.scripts[script] === 'string' ? pkg.scripts[script].trim() : '';
+  if (!cmd) return fallback;
+  const [head, ...rest] = cmd.split(/\s+/);
+  if (!head || head.includes('/') || head.includes('\\')) return fallback; // a path, not a tool name
+  let real;
+  try {
+    real = fs.realpathSync(path.join(appDir, 'node_modules', '.bin', head)); // the wrapper is a symlink on POSIX
+    if (!fs.statSync(real).isFile()) return fallback;
+  } catch {
+    return fallback;
+  }
+  if (!looksLikeNodeScript(real)) return fallback; // a native tool keeps the normal path
+  return { file: nodeRuntime(), args: [...hostNodeFlags(), real, ...rest] };
 }
