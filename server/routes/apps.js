@@ -44,6 +44,7 @@ import {
   validName,
 } from '../lib/apprunner.js';
 import { buildQueue, classifyProject } from '../lib/buildqueue.js';
+import { isEmbeddedAndroid } from '../lib/paths.js';
 
 const MAX_ZIP_BYTES = 60 * 1024 * 1024;
 const MAX_INFLATED_BYTES = 200 * 1024 * 1024;
@@ -53,6 +54,35 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_ZIP_BYTES, files: 1 },
 });
+
+// A Next.js app on embedded Android has no native SWC binary — the npm package
+// @next/swc-android-arm64 does not exist, so Next's loadNative() would try (and
+// fail) to download it mid-build. Drop a stub package into node_modules that
+// re-exports the WASM build of the same compiler, which runs on the phone's
+// ICU-less Node. Written post-install so a fresh node_modules can't wipe it.
+const NEXT_SWC_ANDROID = '@next/swc-android-arm64';
+function seedNextSwcStub(dirAbs, profile) {
+  if (!isEmbeddedAndroid()) return;
+  if (!profile || profile.startKind !== 'next') return;
+  try {
+    const nextPkg = path.join(dirAbs, 'node_modules', 'next', 'package.json');
+    const version = JSON.parse(fs.readFileSync(nextPkg, 'utf8')).version;
+    const stubDir = path.join(dirAbs, 'node_modules', '@next', 'swc-android-arm64');
+    fs.mkdirSync(stubDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(stubDir, 'package.json'),
+      JSON.stringify({ name: '@next/swc-android-arm64', version, private: true, main: 'index.js' }, null, 2) + '\n'
+    );
+    fs.writeFileSync(
+      path.join(stubDir, 'index.js'),
+      '// MittiCloud: no native SWC binary exists for Android. This stub points\n' +
+        '// Next at the WASM build of the same compiler, which runs on this host.\n' +
+        "module.exports = require('@next/swc-wasm-nodejs');\n"
+    );
+  } catch {
+    /* if the seeding fails the build just reports its own real error */
+  }
+}
 
 function appDir(name) {
   validName(name);
@@ -244,6 +274,12 @@ router.post('/:name/deploy', async (req, res, next) => {
         }
         install = await runNpmInstall(name, { full: profile.hasBuild });
         if (!install.ok) return { step: 'install', error: install.error || 'npm install failed' };
+        // A Next.js app on embedded Android has no native SWC binary — the npm
+        // package @next/swc-android-arm64 does not exist, and `loadNative()` would
+        // otherwise try (and fail) to download it mid-build. Seed a stub that
+        // redirects Next to the WASM build of the same compiler, which runs on
+        // the phone. Harmless on a desktop with a real binary.
+        seedNextSwcStub(dirAbs, profile);
       }
       if (wantInstall && profile.hasBuild) {
         setDeployStep(name, 'building');

@@ -68,7 +68,10 @@ export function packageTool() {
 /**
  * The extra env a package manager needs. npm and Yarn both want a writable
  * HOME (they keep config and caches there) and a TMPDIR that is not the
- * nonexistent /tmp. An explicitly set value always wins.
+ * nonexistent /tmp. On the phone, NODE_OPTIONS carries the shim into every
+ * child a build or a runner spawns (jest-worker forks, yarn's helpers) — a bare
+ * --require only reaches the parent, so a worker child would start unshimmed
+ * and crash on the ICU-less Node's missing pieces. An explicit value wins.
  */
 export function packageEnv(base, { home = null, cache = null } = {}) {
   const env = { ...base };
@@ -76,6 +79,8 @@ export function packageEnv(base, { home = null, cache = null } = {}) {
   if (home && !env.HOME) env.HOME = home;
   if (cache) env.YARN_CACHE_FOLDER = cache;
   env.YARN_IGNORE_PATH = '1'; // never fall back to a PATH yarn/npm
+  const flags = hostNodeFlags();
+  if (flags.length && !env.NODE_OPTIONS) env.NODE_OPTIONS = flags.join(' ');
   return env;
 }
 
@@ -155,13 +160,46 @@ export function scriptRunRequest(appDir, script, fallback) {
   if (!cmd) return fallback;
   const [head, ...rest] = cmd.split(/\s+/);
   if (!head || head.includes('/') || head.includes('\\')) return fallback; // a path, not a tool name
-  let real;
-  try {
-    real = fs.realpathSync(path.join(appDir, 'node_modules', '.bin', head)); // the wrapper is a symlink on POSIX
-    if (!fs.statSync(real).isFile()) return fallback;
-  } catch {
-    return fallback;
+  // Resolve the tool's executable. The npm/yarn wrapper lives at
+  // node_modules/.bin/<tool>, which Android refuses to execute — so run the
+  // tool's own JS on our node instead. `.bin` may not even exist on Android
+  // (it holds exec shims Android blocks), so fall back to the package's `bin`
+  // entry in node_modules, then to the manager path as a last resort.
+  const candidates = [
+    path.join(appDir, 'node_modules', '.bin', head), // a symlink to the real tool on POSIX
+    // the package's own "bin" entry, e.g. next/dist/bin/next
+    ...binCandidatesFor(appDir, head),
+  ];
+  for (const c of candidates) {
+    let real;
+    try {
+      real = fs.realpathSync(c);
+      if (!fs.statSync(real).isFile()) continue;
+    } catch {
+      continue;
+    }
+    if (!looksLikeNodeScript(real)) return fallback; // a native tool keeps the normal path
+    return { file: nodeRuntime(), args: [...hostNodeFlags(), real, ...rest] };
   }
-  if (!looksLikeNodeScript(real)) return fallback; // a native tool keeps the normal path
-  return { file: nodeRuntime(), args: [...hostNodeFlags(), real, ...rest] };
+  return fallback;
+}
+
+// Where a package's `bin` entries live, resolved via its package.json. Yarn on
+// Android may not write node_modules/.bin (the exec shims are useless there),
+// so this finds the real executable the wrapper would have pointed to.
+function binCandidatesFor(appDir, tool) {
+  // .bin wrappers point at a package's bin: next -> next/dist/bin/next
+  const pkgDir = path.join(appDir, 'node_modules', tool);
+  const out = [];
+  try {
+    const pj = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
+    const bin = pj && pj.bin;
+    const entries = typeof bin === 'string' ? [['index.js', bin]] : bin && typeof bin === 'object' ? Object.entries(bin) : [];
+    for (const [, rel] of entries) {
+      if (typeof rel === 'string' && rel) out.push(path.join(pkgDir, rel));
+    }
+  } catch {
+    /* not a package dir / unreadable — no candidates */
+  }
+  return out;
 }
